@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>오늘한칸</title>
+<style>
+  :root{
+    --bg:#f7f7f8; --card:#ffffff; --line:#e6e6e9; --text:#1c1c1f; --sub:#7a7a82;
+    --accent:#4f6df5; --accent-soft:#eef1ff; --danger:#e5484d; --ok:#1fa06b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;}
+
+  /* ── 로그인 ── */
+  #authBox{max-width:360px;margin:80px auto;padding:24px;background:var(--card);border:1px solid var(--line);border-radius:16px;}
+  #authBox h1{font-size:18px;margin:0 0 16px;}
+  #authBox input{width:100%;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);border-radius:10px;font-size:14px;}
+  #authBox button{width:100%;padding:10px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;cursor:pointer;margin-top:4px;}
+  #authBox .alt{background:none;color:var(--accent);font-size:12px;padding:6px;}
+  #authMsg{font-size:12px;color:var(--danger);min-height:16px;margin-top:4px;}
+
+  /* ── 레이아웃 ── */
+  #app{display:none;min-height:100vh;}
+  .layout{display:flex;min-height:100vh;}
+  .sidebar{width:180px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);padding:20px 12px;position:sticky;top:0;height:100vh;}
+  .sidebar h1{font-size:15px;margin:0 0 20px;padding-left:8px;}
+  .navitem{display:flex;align-items:center;gap:8px;padding:10px 8px;border-radius:10px;color:var(--sub);font-size:14px;cursor:pointer;margin-bottom:4px;}
+  .navitem.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
+  .content{flex:1;min-width:0;padding:20px 24px 100px;max-width:640px;}
+  .pagehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .pagehead h2{font-size:18px;margin:0;}
+  #logoutBtn{background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;}
+
+  .bottombar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);z-index:10;}
+  .bottombar .navitem{flex:1;flex-direction:column;text-align:center;font-size:11px;margin:0;border-radius:0;padding:8px 0;}
+  .bottombar{display:none;}
+  @media (max-width:760px){
+    .sidebar{display:none;}
+    .bottombar{display:flex;}
+    .content{padding:16px 16px 90px;max-width:100%;}
+  }
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;}
+  .empty{text-align:center;color:var(--sub);font-size:13px;padding:50px 0;}
+
+  /* ── 집 화면 ── */
+  .progress-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;}
+  .progress-text{font-size:14px;color:var(--sub);margin-bottom:8px;}
+  .progress-bar{height:8px;background:var(--bg);border-radius:999px;overflow:hidden;}
+  .progress-fill{height:100%;background:var(--accent);border-radius:999px;transition:width .25s;}
+  .task-row{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--line);}
+  .task-row:last-child{border-bottom:none;}
+  .task-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+  .task-row span{font-size:14px;}
+  .task-row.done span{color:var(--sub);text-decoration:line-through;}
+
+  /* ── 일정 화면 ── */
+  .day-group{margin-bottom:14px;}
+  .day-label{font-size:12px;color:var(--sub);margin:0 0 6px 2px;font-weight:600;}
+  .event-row{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--line);}
+  .event-row:last-child{border-bottom:none;}
+  .event-row .t{font-size:12px;color:var(--sub);width:48px;flex-shrink:0;}
+  .event-row .body{flex:1;min-width:0;}
+  .event-row .title{font-size:14px;}
+  .event-row .memo{font-size:12px;color:var(--sub);margin-top:2px;}
+  .event-row .del{border:none;background:none;color:var(--danger);font-size:12px;cursor:pointer;flex-shrink:0;}
+
+  /* ── 할일 관리 화면 ── */
+  .todo-row{display:flex;align-items:center;gap:8px;padding:12px 4px;border-bottom:1px solid var(--line);}
+  .todo-row:last-child{border-bottom:none;}
+  .todo-row span{flex:1;font-size:14px;}
+  .todo-row.inactive span{color:var(--sub);}
+  .togglebtn{border:1px solid var(--line);background:#fff;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--sub);}
+  .togglebtn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);}
+  .del{border:none;background:none;color:var(--danger);font-size:12px;cursor:pointer;}
+
+  .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px rgba(79,109,245,.4);cursor:pointer;z-index:8;}
+  @media (max-width:760px){ .fab{bottom:78px;} }
+
+  .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-end;justify-content:center;z-index:20;}
+  .sheet-bg.open{display:flex;}
+  .sheet{background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:18px 16px 24px;max-height:88vh;overflow-y:auto;}
+  .sheet h2{font-size:15px;margin:0 0 12px;}
+  .field{margin-bottom:10px;}
+  .field label{font-size:12px;color:var(--sub);display:block;margin-bottom:4px;}
+  .field input, .field textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;}
+  .field.split{display:flex;gap:8px;}
+  .field.split > div{flex:1;}
+  .sheet-actions{display:flex;gap:8px;margin-top:14px;}
+  .sheet-actions button{flex:1;padding:11px;border-radius:10px;border:none;font-size:14px;cursor:pointer;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-ghost{background:var(--bg);color:var(--sub);}
+</style>
+</head>
+<body>
+
+<div id="authBox">
+  <h1>오늘한칸</h1>
+  <div id="authMsg"></div>
+  <input id="authEmail" type="email" placeholder="이메일" autocomplete="username" />
+  <input id="authPw" type="password" placeholder="비밀번호 (8자 이상)" autocomplete="current-password" />
+  <button id="loginBtn">로그인</button>
+  <button id="signupBtn" class="alt">계정이 없다면 회원가입</button>
+</div>
+
+<div id="app">
+  <div class="layout">
+    <div class="sidebar">
+      <h1>오늘한칸</h1>
+      <div class="navitem" data-page="home">🏠 집</div>
+      <div class="navitem" data-page="schedule">📅 일정</div>
+      <div class="navitem" data-page="todo">✅ 할일</div>
+      <div style="margin-top:20px;"><button id="logoutBtn">로그아웃</button></div>
+    </div>
+
+    <div class="content">
+      <!-- 집 -->
+      <div class="page" data-page="home">
+        <div class="pagehead"><h2>🏠 집</h2></div>
+        <div class="progress-wrap">
+          <div class="progress-text" id="homeProgressText">오늘 0/0 완료</div>
+          <div class="progress-bar"><div class="progress-fill" id="homeProgressFill" style="width:0%"></div></div>
+        </div>
+        <div id="homeList"></div>
+        <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 할일이 없어요.<br/>'할일' 탭에서 먼저 추가해보세요.</div>
+      </div>
+
+      <!-- 일정 -->
+      <div class="page" data-page="schedule" style="display:none;">
+        <div class="pagehead"><h2>📅 일정</h2></div>
+        <div id="scheduleList"></div>
+        <div id="scheduleEmpty" class="empty" style="display:none;">등록된 일정이 없어요.<br/>오른쪽 아래 + 버튼으로 추가해보세요.</div>
+      </div>
+
+      <!-- 할일 -->
+      <div class="page" data-page="todo" style="display:none;">
+        <div class="pagehead"><h2>✅ 할일 관리</h2></div>
+        <div id="todoList"></div>
+        <div id="todoEmpty" class="empty" style="display:none;">등록된 할일이 없어요.<br/>오른쪽 아래 + 버튼으로 추가해보세요.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="navitem" data-page="home">🏠<br/>집</div>
+    <div class="navitem" data-page="schedule">📅<br/>일정</div>
+    <div class="navitem" data-page="todo">✅<br/>할일</div>
+  </div>
+
+  <button class="fab" id="addBtn">+</button>
+</div>
+
+<!-- 일정 추가 시트 -->
+<div class="sheet-bg" id="eventSheetBg">
+  <div class="sheet">
+    <h2>일정 추가</h2>
+    <div class="field split">
+      <div><label>날짜</label><input id="ev_date" type="date" /></div>
+      <div><label>시간(선택)</label><input id="ev_time" type="time" /></div>
+    </div>
+    <div class="field"><label>제목</label><input id="ev_title" type="text" placeholder="예: 병원 예약" /></div>
+    <div class="field"><label>메모(선택)</label><textarea id="ev_memo" rows="2"></textarea></div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="eventCancelBtn">취소</button>
+      <button class="btn-primary" id="eventSaveBtn">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 할일 추가 시트 -->
+<div class="sheet-bg" id="taskSheetBg">
+  <div class="sheet">
+    <h2>할일 추가</h2>
+    <div class="field"><label>할일 이름</label><input id="tk_name" type="text" placeholder="예: 물 마시기" /></div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="taskCancelBtn">취소</button>
+      <button class="btn-primary" id="taskSaveBtn">저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  // ── Supabase 설정 (그리지우 프로젝트, tok_ 접두사 테이블 사용) ──
+  const SUPABASE_URL = "https://mmpsyajgyufdxmmnxqba.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_odr6eVpfut1PbfGcG9vDYQ_pKEVFggA";
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const $ = (id) => document.getElementById(id);
+  const todayStr = () => new Date().toISOString().slice(0,10);
+
+  let tasks = [];
+  let logsToday = new Set(); // task_id set, 오늘 완료된 것
+  let events = [];
+  let currentPage = "home";
+
+  // ── 인증 ──
+  $("loginBtn").onclick = async () => {
+    const email = $("authEmail").value.trim();
+    const password = $("authPw").value;
+    $("authMsg").textContent = "";
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { $("authMsg").textContent = error.message; return; }
+    await boot();
+  };
+  $("signupBtn").onclick = async () => {
+    const email = $("authEmail").value.trim();
+    const password = $("authPw").value;
+    $("authMsg").textContent = "";
+    if (password.length < 8) { $("authMsg").textContent = "비밀번호는 8자 이상이어야 해요."; return; }
+    const { error } = await sb.auth.signUp({ email, password });
+    if (error) { $("authMsg").textContent = error.message; return; }
+    $("authMsg").style.color = "var(--ok)";
+    $("authMsg").textContent = "가입 완료! 로그인 버튼을 눌러주세요.";
+  };
+  $("logoutBtn").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+  async function boot() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    $("authBox").style.display = "none";
+    $("app").style.display = "block";
+    await loadAll();
+    showPage("home");
+  }
+
+  // ── 네비게이션 ──
+  document.querySelectorAll(".navitem").forEach(el => {
+    el.onclick = () => showPage(el.dataset.page);
+  });
+  function showPage(page) {
+    currentPage = page;
+    document.querySelectorAll(".navitem").forEach(el => el.classList.toggle("active", el.dataset.page === page));
+    document.querySelectorAll(".page").forEach(el => el.style.display = el.dataset.page === page ? "block" : "none");
+    $("addBtn").style.display = page === "home" ? "none" : "flex";
+  }
+
+  // ── 데이터 로드 ──
+  async function loadAll() {
+    const [{ data: taskData, error: e1 }, { data: logData, error: e2 }, { data: eventData, error: e3 }] = await Promise.all([
+      sb.from("tok_tasks").select("*").order("sort_order").order("created_at"),
+      sb.from("tok_task_logs").select("task_id").eq("done_date", todayStr()),
+      sb.from("tok_events").select("*").order("event_date").order("event_time"),
+    ]);
+    if (e1 || e2 || e3) { alert("불러오기 실패: " + (e1||e2||e3).message); return; }
+    tasks = taskData || [];
+    logsToday = new Set((logData || []).map(r => r.task_id));
+    events = eventData || [];
+    renderHome();
+    renderSchedule();
+    renderTodo();
+  }
+
+  // ── 집 화면 ──
+  function renderHome() {
+    const active = tasks.filter(t => t.is_active);
+    const doneCount = active.filter(t => logsToday.has(t.id)).length;
+    $("homeProgressText").textContent = `오늘 ${doneCount}/${active.length} 완료`;
+    $("homeProgressFill").style.width = active.length ? `${Math.round(doneCount/active.length*100)}%` : "0%";
+    $("homeEmpty").style.display = active.length ? "none" : "block";
+    $("homeList").innerHTML = active.map(t => {
+      const done = logsToday.has(t.id);
+      return `<div class="task-row ${done?'done':''}">
+        <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
+        <span>${escapeHtml(t.name)}</span>
+      </div>`;
+    }).join("");
+    document.querySelectorAll(".home-check").forEach(cb => {
+      cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
+    });
+  }
+
+  async function toggleToday(taskId, checked) {
+    if (checked) {
+      const { error } = await sb.from("tok_task_logs").insert({ task_id: taskId, done_date: todayStr() });
+      if (error) { alert("체크 실패: " + error.message); return; }
+      logsToday.add(taskId);
+    } else {
+      const { error } = await sb.from("tok_task_logs").delete().eq("task_id", taskId).eq("done_date", todayStr());
+      if (error) { alert("체크 해제 실패: " + error.message); return; }
+      logsToday.delete(taskId);
+    }
+    renderHome();
+  }
+
+  // ── 일정 화면 ──
+  function renderSchedule() {
+    $("scheduleEmpty").style.display = events.length ? "none" : "block";
+    const groups = {};
+    events.forEach(e => { (groups[e.event_date] ||= []).push(e); });
+    const dates = Object.keys(groups).sort();
+    $("scheduleList").innerHTML = dates.map(d => `
+      <div class="day-group">
+        <div class="day-label">${formatDate(d)}</div>
+        <div class="card">
+          ${groups[d].map(e => `
+            <div class="event-row">
+              <div class="t">${e.event_time ? e.event_time.slice(0,5) : ""}</div>
+              <div class="body">
+                <div class="title">${escapeHtml(e.title)}</div>
+                ${e.memo ? `<div class="memo">${escapeHtml(e.memo)}</div>` : ""}
+              </div>
+              <button class="del" data-id="${e.id}">삭제</button>
+            </div>`).join("")}
+        </div>
+      </div>
+    `).join("");
+    document.querySelectorAll("#scheduleList .del").forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm("이 일정을 삭제할까요?")) return;
+        const { error } = await sb.from("tok_events").delete().eq("id", btn.dataset.id);
+        if (error) { alert("삭제 실패: " + error.message); return; }
+        await loadAll();
+      };
+    });
+  }
+
+  function formatDate(d) {
+    const dt = new Date(d + "T00:00:00");
+    const days = ["일","월","화","수","목","금","토"];
+    return `${dt.getMonth()+1}월 ${dt.getDate()}일 (${days[dt.getDay()]})`;
+  }
+
+  // ── 할일 관리 화면 ──
+  function renderTodo() {
+    $("todoEmpty").style.display = tasks.length ? "none" : "block";
+    $("todoList").innerHTML = tasks.map(t => `
+      <div class="todo-row ${t.is_active?"":"inactive"}">
+        <span>${escapeHtml(t.name)}</span>
+        <button class="togglebtn ${t.is_active?"on":""}" data-id="${t.id}" data-active="${t.is_active}">${t.is_active?"진행중":"멈춤"}</button>
+        <button class="del" data-id="${t.id}">삭제</button>
+      </div>
+    `).join("");
+    document.querySelectorAll("#todoList .togglebtn").forEach(btn => {
+      btn.onclick = async () => {
+        const newActive = !(btn.dataset.active === "true");
+        const { error } = await sb.from("tok_tasks").update({ is_active: newActive }).eq("id", btn.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        await loadAll();
+      };
+    });
+    document.querySelectorAll("#todoList .del").forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm("이 할일을 삭제할까요? (기록도 함께 삭제돼요)")) return;
+        const { error } = await sb.from("tok_tasks").delete().eq("id", btn.dataset.id);
+        if (error) { alert("삭제 실패: " + error.message); return; }
+        await loadAll();
+      };
+    });
+  }
+
+  // ── + 버튼: 현재 페이지에 맞는 추가 시트 열기 ──
+  $("addBtn").onclick = () => {
+    if (currentPage === "schedule") openEventSheet();
+    else if (currentPage === "todo") openTaskSheet();
+  };
+
+  function openEventSheet() {
+    $("ev_date").value = todayStr();
+    $("ev_time").value = "";
+    $("ev_title").value = "";
+    $("ev_memo").value = "";
+    $("eventSheetBg").classList.add("open");
+  }
+  $("eventCancelBtn").onclick = () => $("eventSheetBg").classList.remove("open");
+  $("eventSaveBtn").onclick = async () => {
+    const title = $("ev_title").value.trim();
+    const event_date = $("ev_date").value;
+    if (!title || !event_date) { alert("날짜와 제목은 꼭 입력해주세요."); return; }
+    const { error } = await sb.from("tok_events").insert({
+      event_date, event_time: $("ev_time").value || null,
+      title, memo: $("ev_memo").value.trim() || null,
+    });
+    if (error) { alert("저장 실패: " + error.message); return; }
+    $("eventSheetBg").classList.remove("open");
+    await loadAll();
+  };
+
+  function openTaskSheet() {
+    $("tk_name").value = "";
+    $("taskSheetBg").classList.add("open");
+  }
+  $("taskCancelBtn").onclick = () => $("taskSheetBg").classList.remove("open");
+  $("taskSaveBtn").onclick = async () => {
+    const name = $("tk_name").value.trim();
+    if (!name) { alert("할일 이름을 입력해주세요."); return; }
+    const { error } = await sb.from("tok_tasks").insert({ name, sort_order: tasks.length });
+    if (error) { alert("저장 실패: " + error.message); return; }
+    $("taskSheetBg").classList.remove("open");
+    await loadAll();
+  };
+
+  function escapeHtml(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+  boot();
+</script>
+</body>
+</html>
