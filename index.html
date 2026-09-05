@@ -140,6 +140,10 @@
   .ag-allday-row.dragging{opacity:.5;}
   .ag-tl-grid.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;}
   #agendaAllDayZone.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;border-radius:14px;}
+  #somedayZone.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;border-radius:14px;}
+  .planup-day.drop-target{background:var(--accent-soft);border-radius:8px;}
+  .ag-someday-row{cursor:grab;}
+  .ag-someday-row.dragging{cursor:grabbing;}
   .agenda-time{color:var(--sub);font-size:12px;width:36px;flex-shrink:0;}
   .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;flex-shrink:0;}
   .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -285,8 +289,10 @@
 
           <div class="home-col">
             <div class="section-label">💭 언젠가</div>
-            <div class="card" id="somedaySummaryList"></div>
-            <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
+            <div id="somedayZone">
+              <div class="card" id="somedaySummaryList"></div>
+              <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
+            </div>
           </div>
         </div>
       </div>
@@ -580,47 +586,82 @@
     attachAgendaAllDayDrag();
   }
 
-  // 하루종일 ⇄ 시간 있는 뷰(타임블럭/타임라인) 간 드래그로 서로 이동.
-  // 하루종일 → 시간 있는 쪽: 놓은 위치의 블럭/시각으로 시간이 생김. 시간 있는 쪽 → 하루종일: 시간이 지워짐(끝은 attachAgendaBlockDrag/attachAgendaTimelineItemDrag 쪽에 있음).
-  function agendaTimeDropTarget(x, y) {
+  // 집 페이지 3열(언젠가 / 다가오는 계획 / 오늘의 하루종일·타임블럭·타임라인) 전체를 아우르는
+  // 드래그 대상 판별 + 실제 이동 처리. 세 열 중 어디서 집어 어디에 놓든 같은 방식으로 처리됨.
+  //   zone 종류: "someday"(날짜 없음) / "planday"(다가오는 계획의 특정 날짜) / "today-allday"(오늘, 시간 없음) / "today-timed"(오늘, 특정 시각)
+  function homeDropZone(x, y) {
     const el = document.elementFromPoint(x, y);
     if (!el) return null;
+    const planDay = el.closest(".planup-day[data-idx]");
+    if (planDay) {
+      const date = homePlanDays[parseInt(planDay.dataset.idx, 10)];
+      return date ? { zone: "planday", date } : null;
+    }
     const blockCard = el.closest(".ag-block-card[data-block-start]");
-    if (blockCard) return { type: "block", startMinute: parseInt(blockCard.dataset.blockStart, 10) };
+    if (blockCard) return { zone: "today-timed", startMinute: parseInt(blockCard.dataset.blockStart, 10) };
     const tlContent = el.closest(".ag-tl-content");
     if (tlContent) {
       const rect = tlContent.getBoundingClientRect();
       const slot = Math.max(0, Math.floor((y - rect.top) / AG_TL_ROW_PX));
-      return { type: "timeline", startMinute: agendaTimelineMinM + slot * AG_TL_SLOT_MIN };
+      return { zone: "today-timed", startMinute: agendaTimelineMinM + slot * AG_TL_SLOT_MIN };
     }
-    if (el.closest("#agendaAllDayZone")) return { type: "allday" };
+    if (el.closest("#agendaAllDayZone")) return { zone: "today-allday" };
+    if (el.closest("#somedayZone")) return { zone: "someday" };
     return null;
   }
-  let agendaTimelineMinM = 360; // renderAgendaTimeline이 매번 갱신(타임라인 뷰에서 드롭 위치→시각 계산용)
+  let agendaTimelineMinM = 360; // renderAgendaTimeline이 매번 갱신(타임라인 뷰 드롭 위치→시각 계산용)
+  let homePlanDays = [];        // renderPlanUpcomingBoard가 매번 갱신(다가오는 계획 칸 idx→날짜 계산용)
 
-  async function setAgendaItemTime(kind, id, startMinute) {
+  // kind: "habit" | "event" | "todo" | "someday"(아직 날짜 없는 언젠가 항목) 소스를 zone으로 옮김.
+  // 습관은 날짜 개념이 없어 오늘(하루종일/시간) 두 zone만 적용되고 나머지는 무시(아무 일도 안 일어남).
+  // 언젠가⇄할일은 테이블 자체가 달라서(tok_someday ↔ tok_todos) 새로 만들고 지우는 방식으로 옮김.
+  async function moveItemToZone(kind, id, zoneObj) {
+    if (!zoneObj) return;
+    const zone = zoneObj.zone;
     if (kind === "habit") {
-      const { error } = await sb.from("tok_habits").update({ start_minute: startMinute }).eq("id", id);
+      if (zone === "today-allday") {
+        const { error } = await sb.from("tok_habits").update({ start_minute: null }).eq("id", id);
+        if (error) { alert("이동 실패: " + error.message); return; }
+      } else if (zone === "today-timed") {
+        const { error } = await sb.from("tok_habits").update({ start_minute: zoneObj.startMinute }).eq("id", id);
+        if (error) { alert("이동 실패: " + error.message); return; }
+      } else {
+        return; // 습관은 언젠가/다가오는 계획 날짜로는 옮길 수 없음(매일 반복이라 날짜 소속이 아님)
+      }
+    } else if (kind === "event") {
+      if (zone === "someday") return; // 일정은 고정 스케줄 개념이라 언젠가로는 전환하지 않음
+      const patch = zone === "planday" ? { event_date: zoneObj.date }
+        : zone === "today-allday" ? { event_date: todayStr(), event_time: null }
+        : { event_date: todayStr(), event_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
+      const { error } = await sb.from("tok_events").update(patch).eq("id", id);
       if (error) { alert("이동 실패: " + error.message); return; }
     } else if (kind === "todo") {
-      const { error } = await sb.from("tok_todos").update({ todo_time: minutesToHHMM(startMinute) + ":00" }).eq("id", id);
-      if (error) { alert("이동 실패: " + error.message); return; }
-    } else {
-      const { error } = await sb.from("tok_events").update({ event_time: minutesToHHMM(startMinute) + ":00" }).eq("id", id);
-      if (error) { alert("이동 실패: " + error.message); return; }
-    }
-    await loadAll();
-  }
-  async function clearAgendaItemTime(kind, id) {
-    if (kind === "habit") {
-      const { error } = await sb.from("tok_habits").update({ start_minute: null }).eq("id", id);
-      if (error) { alert("이동 실패: " + error.message); return; }
-    } else if (kind === "todo") {
-      const { error } = await sb.from("tok_todos").update({ todo_time: null }).eq("id", id);
-      if (error) { alert("이동 실패: " + error.message); return; }
-    } else {
-      const { error } = await sb.from("tok_events").update({ event_time: null }).eq("id", id);
-      if (error) { alert("이동 실패: " + error.message); return; }
+      if (zone === "someday") {
+        const t = todos.find(x => x.id === id);
+        if (!t) return;
+        const { error: insErr } = await sb.from("tok_someday").insert({ title: t.title, is_done: t.is_done });
+        if (insErr) { alert("이동 실패: " + insErr.message); return; }
+        const { error: delErr } = await sb.from("tok_todos").delete().eq("id", id);
+        if (delErr) { alert("이동 실패: " + delErr.message); return; }
+      } else {
+        const patch = zone === "planday" ? { start_date: zoneObj.date, end_date: null }
+          : zone === "today-allday" ? { start_date: todayStr(), end_date: null, todo_time: null }
+          : { start_date: todayStr(), end_date: null, todo_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
+        const { error } = await sb.from("tok_todos").update(patch).eq("id", id);
+        if (error) { alert("이동 실패: " + error.message); return; }
+      }
+    } else if (kind === "someday") {
+      if (zone === "someday") return; // 이미 언젠가라 놓아도 변화 없음
+      const s = somedayItems.find(x => x.id === id);
+      if (!s) return;
+      const patch = { title: s.title, is_done: s.is_done, end_date: null };
+      if (zone === "planday") patch.start_date = zoneObj.date;
+      else if (zone === "today-allday") patch.start_date = todayStr();
+      else { patch.start_date = todayStr(); patch.todo_time = minutesToHHMM(zoneObj.startMinute) + ":00"; }
+      const { error: insErr } = await sb.from("tok_todos").insert(patch);
+      if (insErr) { alert("이동 실패: " + insErr.message); return; }
+      const { error: delErr } = await sb.from("tok_someday").delete().eq("id", id);
+      if (delErr) { alert("이동 실패: " + delErr.message); return; }
     }
     await loadAll();
   }
@@ -642,8 +683,8 @@
           dragEl.classList.add("dragging");
         }
         if (!moved) return;
-        const drop = agendaTimeDropTarget(e.clientX, e.clientY);
-        const under = drop && drop.type !== "allday" ? document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card, .ag-tl-grid") : null;
+        const drop = homeDropZone(e.clientX, e.clientY);
+        const under = drop && drop.zone !== "today-allday" ? document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card, .ag-tl-grid, .planup-day, #somedayZone") : null;
         if (under !== curTarget) {
           curTarget?.classList.remove("drop-target");
           curTarget = under || null;
@@ -658,9 +699,9 @@
         curTarget?.classList.remove("drop-target");
         curTarget = null;
         if (!wasMoved) return;
-        const drop = agendaTimeDropTarget(e.clientX, e.clientY);
-        if (!drop || drop.type === "allday") return; // 이미 하루종일이라 놓아도 변화 없음
-        await setAgendaItemTime(kind, id, drop.startMinute);
+        const drop = homeDropZone(e.clientX, e.clientY);
+        if (!drop || drop.zone === "today-allday") return; // 이미 하루종일이라 놓아도 변화 없음
+        await moveItemToZone(kind, id, drop);
       };
       row.addEventListener("pointerup", finish);
       row.addEventListener("pointercancel", () => {
@@ -752,25 +793,23 @@
           dragEl.classList.add("dragging");
         }
         if (!moved) return;
-        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], #agendaAllDayZone");
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], #agendaAllDayZone, .planup-day, #somedayZone");
         if (under !== curTarget) {
           curTarget?.classList.remove("drop-target");
           curTarget = under || null;
           curTarget?.classList.add("drop-target");
         }
       });
-      const finish = async () => {
+      const finish = async (e) => {
         if (!dragEl) return;
-        const el = dragEl, id = dragId, kind = dragKindAttr, wasMoved = moved, target = curTarget;
-        dragEl = null; dragId = null; dragKindAttr = null; moved = false; curTarget = null;
+        const el = dragEl, id = dragId, kind = dragKindAttr, wasMoved = moved;
+        dragEl = null; dragId = null; dragKindAttr = null; moved = false;
         el.classList.remove("dragging");
-        target?.classList.remove("drop-target");
-        if (!wasMoved || !target) return;
-        if (target.id === "agendaAllDayZone") {
-          await clearAgendaItemTime(kind, id);
-        } else {
-          await setAgendaItemTime(kind, id, parseInt(target.dataset.blockStart, 10));
-        }
+        curTarget?.classList.remove("drop-target");
+        curTarget = null;
+        if (!wasMoved) return;
+        const drop = homeDropZone(e.clientX, e.clientY);
+        await moveItemToZone(kind, id, drop);
       };
       row.addEventListener("pointerup", finish);
       row.addEventListener("pointercancel", () => {
@@ -867,7 +906,7 @@
       let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null, isMouse = false;
       let longPressTimer = null;
       let pendingStart = origStart, pendingDuration = origDuration;
-      let overAllDay = false; // 이동 중 하루종일 쪽 위에 올라갔는지(놓으면 시간을 지움)
+      let outsideZone = null, outsideEl = null; // 이동 중 하루종일/다가오는계획/언젠가 쪽 위에 올라갔는지(놓으면 그쪽으로 옮김)
 
       const zoneAt = (clientY) => {
         if (!resizable) return null;
@@ -969,13 +1008,15 @@
         if (Math.abs(dy) > 6) moved = true;
         if (!moved) return;
         if (dragKind === "move") {
-          const zone = document.elementFromPoint(e.clientX, e.clientY)?.closest("#agendaAllDayZone");
-          if (!!zone !== overAllDay) {
-            overAllDay = !!zone;
-            $("agendaAllDayZone").classList.toggle("drop-target", overAllDay);
-            task.style.visibility = overAllDay ? "hidden" : "";
+          const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("#agendaAllDayZone, .planup-day, #somedayZone");
+          if (el !== outsideEl) {
+            outsideEl?.classList.remove("drop-target");
+            outsideEl = el || null;
+            outsideEl?.classList.add("drop-target");
+            outsideZone = el ? homeDropZone(e.clientX, e.clientY) : null;
+            task.style.visibility = outsideZone ? "hidden" : "";
           }
-          if (overAllDay) return; // 하루종일 위에 있는 동안은 시간 위치 미리보기를 갱신하지 않음
+          if (outsideZone) return; // 다른 열 위에 있는 동안은 시간 위치 미리보기를 갱신하지 않음
         }
         const deltaMin = Math.round(dy / AG_TL_ROW_PX) * AG_TL_SLOT_MIN;
         if (dragKind === "move") {
@@ -994,11 +1035,12 @@
       const finish = async () => {
         clearTimer();
         pressed = false;
-        const k = dragKind, wasOverAllDay = overAllDay;
-        dragKind = null; overAllDay = false;
+        const k = dragKind, dropZone = outsideZone;
+        dragKind = null; outsideZone = null;
+        outsideEl?.classList.remove("drop-target");
+        outsideEl = null;
         task.classList.remove("dragging");
         task.style.visibility = "";
-        $("agendaAllDayZone")?.classList.remove("drop-target");
         clearHoverHint();
 
         if (k === null) {
@@ -1006,8 +1048,8 @@
           return;
         }
         if (!moved) return;
-        if (wasOverAllDay) {
-          await clearAgendaItemTime(kind, id);
+        if (dropZone) {
+          await moveItemToZone(kind, id, dropZone);
           return;
         }
         if (kind === "habit") {
@@ -1030,9 +1072,9 @@
       };
       task.addEventListener("pointerup", finish);
       task.addEventListener("pointercancel", () => {
-        clearTimer(); pressed = false; dragKind = null; overAllDay = false;
+        clearTimer(); pressed = false; dragKind = null; outsideZone = null;
+        outsideEl?.classList.remove("drop-target"); outsideEl = null;
         task.classList.remove("dragging"); task.style.visibility = "";
-        $("agendaAllDayZone")?.classList.remove("drop-target");
         clearHoverHint();
       });
       task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
@@ -1080,6 +1122,7 @@
   async function renderPlanUpcomingBoard() {
     const days = [];
     for (let i = 1; i <= 7; i++) days.push(addDaysStr(todayStr(), i));
+    homePlanDays = days;
 
     const { data: logData } = await sb.from("tok_habit_logs").select("habit_id, done_date").in("done_date", days);
     const logsByDate = {};
@@ -1156,8 +1199,8 @@
     attachPlanUpcomingItemDrag(days);
   }
 
-  // 다가오는 계획 보드: 일정·할일(기간 없는 단일 날짜만) 항목을 다른 날짜 칸으로 드래그하면 그 날짜로 옮겨짐.
-  // 습관은 매일 반복이라 특정 날짜 소속이 아니므로 대상에서 제외. 기간 있는 할일은 애매해서 제외(연필로 직접 수정).
+  // 다가오는 계획 보드: 일정·할일(기간 없는 단일 날짜만) 항목을 다른 날짜 칸/오늘(타임블럭·타임라인·하루종일)/언젠가로 드래그.
+  // 습관은 이 보드에 카드가 없어 소스가 될 수 없음. 기간 있는 할일은 애매해서 제외(연필로 직접 수정).
   function attachPlanUpcomingItemDrag(days) {
     const board = $("planUpcomingBoard");
     if (!board) return;
@@ -1179,37 +1222,31 @@
           row.classList.add("dragging");
         }
         if (!moved) return;
-        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".planup-day[data-idx]");
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], .ag-tl-grid, #agendaAllDayZone, #somedayZone, .planup-day[data-idx]");
         if (under !== curTarget) {
-          curTarget?.classList.remove("drag-hi");
+          curTarget?.classList.remove("drop-target");
           curTarget = under || null;
-          curTarget?.classList.add("drag-hi");
+          curTarget?.classList.add("drop-target");
         }
       });
       const finish = async (e) => {
         if (!row.hasPointerCapture?.(e.pointerId)) return;
         e.stopPropagation();
-        const wasMoved = moved, target = curTarget, kind = row.dataset.kind, id = row.dataset.id;
-        moved = false; curTarget = null;
+        const wasMoved = moved, kind = row.dataset.kind, id = row.dataset.id;
+        moved = false;
         row.classList.remove("dragging");
-        target?.classList.remove("drag-hi");
-        if (!wasMoved || !target) return;
-        const newDate = days[parseInt(target.dataset.idx, 10)];
-        if (kind === "event") {
-          const { error } = await sb.from("tok_events").update({ event_date: newDate }).eq("id", id);
-          if (error) { alert("이동 실패: " + error.message); return; }
-        } else {
-          const { error } = await sb.from("tok_todos").update({ start_date: newDate, end_date: null }).eq("id", id);
-          if (error) { alert("이동 실패: " + error.message); return; }
-        }
-        await loadAll();
+        curTarget?.classList.remove("drop-target");
+        curTarget = null;
+        if (!wasMoved) return;
+        const drop = homeDropZone(e.clientX, e.clientY);
+        await moveItemToZone(kind, id, drop);
       };
       row.addEventListener("pointerup", finish);
       row.addEventListener("pointercancel", (e) => {
         e.stopPropagation();
         moved = false;
         row.classList.remove("dragging");
-        curTarget?.classList.remove("drag-hi");
+        curTarget?.classList.remove("drop-target");
         curTarget = null;
       });
     });
@@ -1264,11 +1301,13 @@
     board.onpointercancel = () => { clearHighlight(); planUpcomingAddState = null; };
   }
 
-  // "언젠가" 열: 요약만(최대 8개). 추가·삭제·이름수정은 '할일' 탭에서.
+  // "언젠가" 열: 요약만(최대 8개). 추가·삭제·이름수정은 '할일' 탭에서. 행 자체는 다른 날짜/오늘로 드래그 가능.
+  // ⚠️ data-id 대신 data-someday-id를 씀: 습관 탭의 attachBlockDrag가 전역으로 ".task-row[data-id]"를
+  //   찾기 때문에, 여기서 data-id를 그대로 쓰면 이 행에도 그 핸들러가 잘못 붙어버림(이름공간 충돌 방지).
   function renderSomedaySummary() {
     const items = somedayItems.filter(s => !s.is_done).slice(0, 8);
     $("somedaySummaryList").innerHTML = items.map(item => `
-      <div class="task-row">
+      <div class="task-row ag-someday-row" data-someday-id="${item.id}">
         <input type="checkbox" data-id="${item.id}" class="somedaysum-check" />
         <span>${escapeHtml(item.title)}</span>
       </div>`).join("");
@@ -1279,6 +1318,54 @@
         if (error) { alert("변경 실패: " + error.message); return; }
         await loadAll();
       };
+    });
+    attachSomedayDrag();
+  }
+
+  // 언젠가 행을 다가오는 계획의 특정 날짜/오늘(타임블럭·타임라인·하루종일)로 드래그하면
+  // tok_someday에서 지우고 tok_todos에 그 조건으로 새로 만듦(moveItemToZone의 someday 분기).
+  function attachSomedayDrag() {
+    document.querySelectorAll(".ag-someday-row[data-someday-id]").forEach(row => {
+      let moved = false, startX = 0, startY = 0, curTarget = null;
+      row.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input")) return;
+        moved = false; curTarget = null;
+        startX = e.clientX; startY = e.clientY;
+        row.setPointerCapture?.(e.pointerId);
+      });
+      row.addEventListener("pointermove", (e) => {
+        if (!row.hasPointerCapture?.(e.pointerId)) return;
+        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+          moved = true;
+          row.classList.add("dragging");
+        }
+        if (!moved) return;
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], .ag-tl-grid, #agendaAllDayZone, .planup-day[data-idx]");
+        if (under !== curTarget) {
+          curTarget?.classList.remove("drop-target");
+          curTarget = under || null;
+          curTarget?.classList.add("drop-target");
+        }
+      });
+      const finish = async (e) => {
+        if (!row.hasPointerCapture?.(e.pointerId)) return;
+        const wasMoved = moved, id = row.dataset.somedayId;
+        moved = false;
+        row.classList.remove("dragging");
+        curTarget?.classList.remove("drop-target");
+        curTarget = null;
+        if (!wasMoved) return;
+        const drop = homeDropZone(e.clientX, e.clientY);
+        if (!drop || drop.zone === "someday") return; // 이미 언젠가라 놓아도 변화 없음
+        await moveItemToZone("someday", id, drop);
+      };
+      row.addEventListener("pointerup", finish);
+      row.addEventListener("pointercancel", () => {
+        moved = false;
+        row.classList.remove("dragging");
+        curTarget?.classList.remove("drop-target");
+        curTarget = null;
+      });
     });
   }
 
