@@ -339,7 +339,7 @@
           <button id="viewTimelineBtn">타임라인</button>
         </div>
         <div id="timelineWrap"></div>
-        <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 습관이 없어요.<br/>아래에서 먼저 추가해보세요.</div>
+        <div id="homeEmpty" class="empty" style="display:none;"></div>
 
         <div class="section-label" style="margin-top:20px;">습관 관리</div>
         <div class="inline-add-row">
@@ -440,6 +440,7 @@
   let timeBlocks = []; // tok_time_blocks: 타임블럭 탭의 이름표 그룹핑용
   let todos = []; // tok_todos: 다가오는 계획 보드용 (날짜 있는 1회성 할일)
   let habitCategories = []; // tok_habit_categories: 습관 카테고리(1단계, 이름+색상)
+  let habitLogs = []; // tok_habit_logs 전체({habit_id, done_date}) — 반복주기 "마지막 완료일" 계산용
   let currentPage = "home";
   let homeView = "list"; // "list" | "timeline"
 
@@ -495,7 +496,7 @@
       { data: habitCatData, error: e8 },
     ] = await Promise.all([
       sb.from("tok_habits").select("*").order("start_minute", { nullsFirst: false }).order("created_at"),
-      sb.from("tok_habit_logs").select("habit_id").eq("done_date", todayStr()),
+      sb.from("tok_habit_logs").select("habit_id, done_date"),
       sb.from("tok_events").select("*").order("event_date").order("event_time"),
       sb.from("tok_someday").select("*").order("created_at"),
       sb.from("tok_time_blocks").select("*").order("sort_order"),
@@ -505,7 +506,8 @@
     const firstError = e1 || e2 || e3 || e5 || e6 || e7 || e8;
     if (firstError) { alert("불러오기 실패: " + firstError.message); return; }
     tasks = taskData || [];
-    logsToday = new Set((logData || []).map(r => r.habit_id));
+    habitLogs = logData || []; // 전체 완료 이력(반복주기의 "마지막 완료일" 계산용)
+    logsToday = new Set(habitLogs.filter(r => r.done_date === todayStr()).map(r => r.habit_id));
     events = eventData || [];
     somedayItems = somedayData || [];
     timeBlocks = blockData || [];
@@ -519,7 +521,7 @@
 
   // ── 집 : 진행률 ──
   function renderProgress() {
-    const active = tasks.filter(t => t.is_active);
+    const active = tasks.filter(t => t.is_active && isHabitDueOnDate(t, todayStr(), logsToday.has(t.id)));
     const doneCount = active.filter(t => logsToday.has(t.id)).length;
     $("homeProgressText").textContent = `오늘 ${doneCount}/${active.length} 완료`;
     $("homeProgressFill").style.width = active.length ? `${Math.round(doneCount/active.length*100)}%` : "0%";
@@ -551,12 +553,44 @@
   let homeAgendaDate = todayStr();
   let agendaView = "block"; // "block" | "timeline" — 오늘 열 전용(습관탭의 homeView와는 별개 상태)
 
-  // 습관은 매일 반복이라 날짜별 완료 여부만 다름. 오늘이면 이미 있는 logsToday를 그대로 씀.
+  // 특정 날짜에 완료 체크된 습관 id 집합 — habitLogs(전체 이력, loadAll에서 미리 다 받아둠)에서 그때그때 계산.
   async function fetchLogsForDate(dateStr) {
-    if (dateStr === todayStr()) return new Set(logsToday);
-    const { data, error } = await sb.from("tok_habit_logs").select("habit_id").eq("done_date", dateStr);
-    if (error) return new Set();
-    return new Set((data || []).map(r => r.habit_id));
+    return new Set(habitLogs.filter(r => r.done_date === dateStr).map(r => r.habit_id));
+  }
+
+  // ── 습관 반복주기("완료일+주기" 방식, 요일 고정 아님 — 안 하면 계속 밀림) ──
+  // 월 단위는 말일 보정(예: 1/31 + 1개월 → 2월엔 28일까지밖에 없으니 2/28로 보정).
+  function addMonthsStr(dateStr, n) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const total = (y * 12 + (m - 1)) + n;
+    const ny = Math.floor(total / 12), nm = total % 12; // nm: 0~11
+    const lastDay = new Date(ny, nm + 1, 0).getDate();
+    return `${ny}-${pad2(nm + 1)}-${pad2(Math.min(d, lastDay))}`;
+  }
+  // dateStr 이전(그 날짜 포함 안 함) 중 가장 최근 완료일
+  function habitLastDoneBefore(habitId, dateStr) {
+    let last = null;
+    for (const r of habitLogs) {
+      if (r.habit_id === habitId && r.done_date < dateStr && (!last || r.done_date > last)) last = r.done_date;
+    }
+    return last;
+  }
+  // 이 습관의 "다음 예정일" — 완료한 적이 한 번도 없으면 만든 날부터 바로 차례(밀리지 않고 즉시 시작),
+  // 완료 이력이 있으면 마지막 완료일 + 주기.
+  function habitNextDueDate(habit, dateStr) {
+    const last = habitLastDoneBefore(habit.id, dateStr);
+    if (!last) return habit.created_at ? habit.created_at.slice(0, 10) : dateStr;
+    const interval = habit.repeat_interval || 1;
+    if (habit.repeat_unit === "week") return addDaysStr(last, interval * 7);
+    if (habit.repeat_unit === "month") return addMonthsStr(last, interval);
+    return addDaysStr(last, interval); // "day"
+  }
+  // 이 날짜에 이 습관을 보여줘야 하는지 — 반복 없음이면 항상 표시, 이미 이 날짜에 체크돼 있으면 항상 표시(해제 가능하게),
+  // 그 외엔 다음 예정일이 이 날짜 이전이거나 같을 때만(안 하면 계속 밀려서 계속 보임)
+  function isHabitDueOnDate(habit, dateStr, doneOnThisDate) {
+    if (!habit.repeat_unit) return true;
+    if (doneOnThisDate) return true;
+    return habitNextDueDate(habit, dateStr) <= dateStr;
   }
 
   // 습관 체크를 "오늘"이 아닌 다른 날짜(과거·미래)에도 할 수 있게 일반화한 버전.
@@ -564,9 +598,11 @@
     if (checked) {
       const { error } = await sb.from("tok_habit_logs").insert({ habit_id: taskId, done_date: dateStr });
       if (error) { alert("체크 실패: " + error.message); return; }
+      habitLogs.push({ habit_id: taskId, done_date: dateStr });
     } else {
       const { error } = await sb.from("tok_habit_logs").delete().eq("habit_id", taskId).eq("done_date", dateStr);
       if (error) { alert("체크 해제 실패: " + error.message); return; }
+      habitLogs = habitLogs.filter(r => !(r.habit_id === taskId && r.done_date === dateStr));
     }
     if (dateStr === todayStr()) {
       if (checked) logsToday.add(taskId); else logsToday.delete(taskId);
@@ -585,8 +621,9 @@
     $("agendaDateLabel").textContent = formatDate(dateStr);
     const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr && !td.todo_time);
     const dayUntimedEvents = events.filter(e => e.event_date === dateStr && !e.event_time);
-    const untimedHabits = tasks.filter(t => t.is_active && t.start_minute == null);
-    const doneSet = untimedHabits.length ? await fetchLogsForDate(dateStr) : new Set();
+    const doneSetAll = await fetchLogsForDate(dateStr);
+    const untimedHabits = tasks.filter(t => t.is_active && t.start_minute == null && isHabitDueOnDate(t, dateStr, doneSetAll.has(t.id)));
+    const doneSet = doneSetAll;
 
     const rows = [
       ...dayUntimedEvents.map(e => `
@@ -750,11 +787,11 @@
     });
   }
 
-  // 선택한 날짜의 "시간 있는" 항목만 모음: 습관(항상 매일 반복) + 시간 있는 일정 + 시간 지정된 할일.
+  // 선택한 날짜의 "시간 있는" 항목만 모음: 습관(반복주기상 이 날짜에 차례인 것만) + 시간 있는 일정 + 시간 지정된 할일.
   // 시간 없는 할일은 하루종일에만 나옴.
   async function timedItemsForDate(dateStr) {
     const doneSet = await fetchLogsForDate(dateStr);
-    const active = tasks.filter(t => t.is_active && t.start_minute != null);
+    const active = tasks.filter(t => t.is_active && t.start_minute != null && isHabitDueOnDate(t, dateStr, doneSet.has(t.id)));
     const habitItems = active.map(t => ({
       kind: "habit", id: t.id, name: t.name,
       start_minute: t.start_minute, duration_minutes: t.duration_minutes || 30,
@@ -2241,8 +2278,12 @@
 
   // ── 습관 탭: 실행뷰(타임블럭/타임라인) + 습관 관리 목록 ──
   function renderTodo() {
-    const active = tasks.filter(t => t.is_active);
+    const allActive = tasks.filter(t => t.is_active);
+    const active = allActive.filter(t => isHabitDueOnDate(t, todayStr(), logsToday.has(t.id)));
     $("homeEmpty").style.display = active.length ? "none" : "block";
+    $("homeEmpty").innerHTML = allActive.length
+      ? "오늘은 차례인 습관이 없어요.<br/>반복주기상 아직 안 밀린 습관들은 여기 안 보여요."
+      : "아직 등록한 습관이 없어요.<br/>아래에서 먼저 추가해보세요.";
     if (homeView === "timeline") renderHomeTimeline(active);
     else renderHomeBlocks(active);
     document.querySelectorAll(".home-check").forEach(cb => {
