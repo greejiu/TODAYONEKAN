@@ -249,15 +249,15 @@
               <button id="agendaNextBtn" class="agenda-nav">▶</button>
             </div>
 
-            <div class="section-label" style="margin-top:10px;font-size:12px;">하루종일</div>
-            <div class="card" id="agendaAllDayList"></div>
-            <div id="agendaAllDayEmpty" class="empty" style="display:none;padding:8px 0;font-size:12px;">하루종일 항목이 없어요.</div>
-
-            <div class="view-toggle" style="margin-top:12px;">
+            <div class="view-toggle" style="margin-top:10px;">
               <button id="agendaViewBlockBtn" class="active">타임블럭</button>
               <button id="agendaViewTimelineBtn">타임라인</button>
             </div>
             <div id="agendaTimeWrap"></div>
+
+            <div class="section-label" style="margin-top:12px;font-size:12px;">하루종일</div>
+            <div class="card" id="agendaAllDayList"></div>
+            <div id="agendaAllDayEmpty" class="empty" style="display:none;padding:8px 0;font-size:12px;">하루종일 항목이 없어요.</div>
           </div>
 
           <div class="home-col">
@@ -363,7 +363,14 @@
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const $ = (id) => document.getElementById(id);
-  const todayStr = () => new Date().toISOString().slice(0,10);
+  // UTC 기준(toISOString)이 아니라 사용자 로컬 시간 기준으로 "오늘" 날짜를 계산 (자정 근처 한국시간 오차 방지)
+  const todayStr = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
   const pad2 = (n) => String(n).padStart(2, "0");
   const minutesToHHMM = (m) => `${pad2(Math.floor(m/60) % 24)}:${pad2(m%60)}`;
 
@@ -465,9 +472,13 @@
   }
 
   function addDaysStr(dateStr, delta) {
+    // toISOString()으로 변환하면 한국 시간(UTC+9)에서 날짜가 하루 어긋나므로 로컬 필드로 직접 조립
     const dt = new Date(dateStr + "T00:00:00");
     dt.setDate(dt.getDate() + delta);
-    return dt.toISOString().slice(0, 10);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const day = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   }
   function hhmmToMinutes(hhmm) {
     const [h, m] = hhmm.split(":").map(Number);
