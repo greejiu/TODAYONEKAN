@@ -593,7 +593,7 @@
 
   // 오늘 열의 타임블럭/타임라인은 보기+체크 전용(드래그 이동·조절은 습관 탭에서). 일정은 표시만.
   function agendaItemRowHtml(it) {
-    return `<div class="task-row ${it.done ? "done" : ""}">
+    return `<div class="task-row ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${it.kind === "habit"
         ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
         : `<span class="agenda-tag">일정</span>`}
@@ -610,7 +610,7 @@
         const inBlock = items.filter(it => it.start_minute >= block.start_minute && it.start_minute < block.end_minute);
         inBlock.forEach(it => covered.add(it));
         html += `<div class="section-label" style="margin:14px 2px 8px;">${escapeHtml(block.title)}</div>`;
-        html += `<div class="card">${inBlock.map(agendaItemRowHtml).join("")}</div>`;
+        html += `<div class="card ag-block-card" data-block-start="${block.start_minute}">${inBlock.map(agendaItemRowHtml).join("")}</div>`;
       });
       const uncovered = items.filter(it => !covered.has(it));
       if (uncovered.length) html += `<div class="card">${uncovered.map(agendaItemRowHtml).join("")}</div>`;
@@ -619,6 +619,59 @@
     }
     $("agendaTimeWrap").innerHTML = html || `<div class="empty" style="padding:20px 0;font-size:12px;">시간이 있는 항목이 없어요.</div>`;
     wireAgendaHabitChecks();
+    attachAgendaBlockDrag();
+  }
+
+  // 오늘 열 타임블럭(카드형) 보기: 습관·일정 행을 다른 블럭 카드 위로 드래그하면
+  // 그 블럭의 시작 시각으로 재배정됨(습관 탭 attachBlockDrag와 동일 패턴, 습관+일정 공용으로 일반화).
+  function attachAgendaBlockDrag() {
+    let dragEl = null, dragId = null, dragKindAttr = null, moved = false, startX = 0, startY = 0, curTarget = null;
+
+    document.querySelectorAll(".ag-block-row[data-id]").forEach(row => {
+      row.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input")) return;
+        dragEl = row; dragId = row.dataset.id; dragKindAttr = row.dataset.kind; moved = false; curTarget = null;
+        startX = e.clientX; startY = e.clientY;
+        row.setPointerCapture?.(e.pointerId);
+      });
+      row.addEventListener("pointermove", (e) => {
+        if (!dragEl) return;
+        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+          moved = true;
+          dragEl.classList.add("dragging");
+        }
+        if (!moved) return;
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start]");
+        if (under !== curTarget) {
+          curTarget?.classList.remove("drop-target");
+          curTarget = under || null;
+          curTarget?.classList.add("drop-target");
+        }
+      });
+      const finish = async () => {
+        if (!dragEl) return;
+        const el = dragEl, id = dragId, kind = dragKindAttr, wasMoved = moved, target = curTarget;
+        dragEl = null; dragId = null; dragKindAttr = null; moved = false; curTarget = null;
+        el.classList.remove("dragging");
+        target?.classList.remove("drop-target");
+        if (!wasMoved || !target) return;
+        const startMinute = parseInt(target.dataset.blockStart, 10);
+        if (kind === "habit") {
+          const { error } = await sb.from("tok_habits").update({ start_minute: startMinute }).eq("id", id);
+          if (error) { alert("이동 실패: " + error.message); return; }
+        } else {
+          const { error } = await sb.from("tok_events").update({ event_time: minutesToHHMM(startMinute) + ":00" }).eq("id", id);
+          if (error) { alert("이동 실패: " + error.message); return; }
+        }
+        await loadAll();
+      };
+      row.addEventListener("pointerup", finish);
+      row.addEventListener("pointercancel", () => {
+        dragEl?.classList.remove("dragging");
+        curTarget?.classList.remove("drop-target");
+        dragEl = null; dragId = null; dragKindAttr = null; moved = false; curTarget = null;
+      });
+    });
   }
 
   const AG_TL_SLOT_MIN = 15, AG_TL_ROW_PX = 13;
