@@ -65,6 +65,8 @@
   .task-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .task-row span{font-size:14px;}
   .task-row.done span{color:var(--sub);text-decoration:line-through;}
+  .block-add-row{padding:10px 4px;color:var(--sub);font-size:13px;text-align:center;cursor:pointer;border-top:1px dashed var(--line);}
+  .block-add-row:hover{color:var(--accent);}
 
   /* ── 집 : 목록/타임라인 보기 전환 ── */
   .view-toggle{display:flex;gap:6px;margin-bottom:10px;}
@@ -475,10 +477,9 @@
       const covered = new Set();
       timeBlocks.forEach(block => {
         const inBlock = timed.filter(t => t.start_minute >= block.start_minute && t.start_minute < block.end_minute);
-        if (!inBlock.length) return;
         inBlock.forEach(t => covered.add(t.id));
         html += `<div class="section-label" style="margin:14px 2px 8px;">${escapeHtml(block.title)}</div>`;
-        html += `<div class="card">${inBlock.map(timedRowHtml).join("")}</div>`;
+        html += `<div class="card">${inBlock.map(timedRowHtml).join("")}<div class="block-add-row" data-block-start="${block.start_minute}">+ 추가</div></div>`;
       });
       const uncovered = timed.filter(t => !covered.has(t.id));
       if (uncovered.length) {
@@ -490,6 +491,11 @@
     }
 
     $("timelineWrap").innerHTML = html + untimedListHtml(untimed, "시간 없음");
+
+    // 블럭 안 "+ 추가"를 누르면 그 블럭 시작 시각으로 습관 추가 시트가 자동으로 채워짐 (소요시간 기본 30분, 15분 단위로 조절 가능)
+    document.querySelectorAll(".block-add-row").forEach(row => {
+      row.onclick = () => openTaskSheet({ startMinute: parseInt(row.dataset.blockStart, 10), durationMinutes: 30 });
+    });
   }
 
   // 타임라인 보기: 15분 단위 그리드 위에 습관을 시작 시각·소요시간에 맞춰 배치.
@@ -514,8 +520,11 @@
     for (let i = 0; i < slotCount; i++) {
       const m = minM + i * TL_SLOT_MIN;
       if (m % 30 === 0) {
-        rowsHtml += `<div class="tl-row-label" style="grid-row:${i+1}">${minutesToHHMM(m)}</div>`;
         rowsHtml += `<div class="tl-row-line" style="grid-row:${i+1}"></div>`;
+        // 30분 눈금선은 다 그리되, 숫자 표시는 정시(매 60분)에만 — 30분 지점은 눈금만 봐도 알 수 있음
+        if (m % 60 === 0) {
+          rowsHtml += `<div class="tl-row-label" style="grid-row:${i+1}">${minutesToHHMM(m)}</div>`;
+        }
       }
     }
 
