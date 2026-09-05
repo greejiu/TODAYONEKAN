@@ -93,6 +93,26 @@
   .someday-row span{flex:1;}
   .someday-row.done span{color:var(--sub);text-decoration:line-through;}
 
+  /* ── 집 : 2열 레이아웃 (1열 습관 실행, 2열 다가오는 계획+언젠가 할일) ── */
+  .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
+  .home-col{min-width:0;}
+  @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
+
+  /* ── 집 : 다가오는 계획 (7일 보드) ── */
+  .plan-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
+  .plan-day:last-child{border-bottom:none;}
+  .plan-day.drag-hi{background:var(--accent-soft);border-radius:8px;}
+  .plan-day-label{font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px;}
+  .plan-day-body{display:flex;flex-direction:column;gap:4px;}
+  .plan-row{display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0;}
+  .plan-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+  .plan-row.done .plan-todo-title{color:var(--sub);text-decoration:line-through;}
+  .plan-row.habit{color:var(--accent);}
+  .plan-todo-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .plan-range-tag{font-size:10px;color:var(--sub);flex-shrink:0;}
+  .plan-todo-edit{border:none;background:none;color:var(--sub);font-size:12px;cursor:pointer;flex-shrink:0;padding:2px 4px;}
+  .plan-day-empty{font-size:12px;color:var(--sub);opacity:.5;padding:4px 0;}
+
   /* ── 일정 화면 ── */
   .day-group{margin-bottom:14px;}
   .day-label{font-size:12px;color:var(--sub);margin:0 0 6px 2px;font-weight:600;}
@@ -168,21 +188,30 @@
         <div class="card" id="upcomingCard"></div>
         <div id="upcomingEmpty" class="empty" style="display:none;padding:16px 0;">다가오는 일정이 없어요.</div>
 
-        <div class="section-label">🕒 오늘의 습관</div>
-        <div class="view-toggle">
-          <button id="viewListBtn" class="active">목록</button>
-          <button id="viewTimelineBtn">타임라인</button>
-        </div>
-        <div id="timelineWrap"></div>
-        <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 습관이 없어요.<br/>'습관' 탭에서 먼저 추가해보세요.</div>
-
-        <div class="section-label">💭 언젠가 할일</div>
-        <div class="card">
-          <div class="someday-add-row">
-            <input id="somedayInput" type="text" placeholder="나중에 할 것 같은 일 아무거나 적어보세요" />
-            <button id="somedayAddBtn">추가</button>
+        <div class="home-grid">
+          <div class="home-col">
+            <div class="section-label">🕒 오늘의 습관</div>
+            <div class="view-toggle">
+              <button id="viewListBtn" class="active">타임블럭</button>
+              <button id="viewTimelineBtn">타임라인</button>
+            </div>
+            <div id="timelineWrap"></div>
+            <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 습관이 없어요.<br/>'습관' 탭에서 먼저 추가해보세요.</div>
           </div>
-          <div id="somedayList"></div>
+
+          <div class="home-col">
+            <div class="section-label">🗓 다가오는 계획</div>
+            <div class="card" id="planBoard"></div>
+
+            <div class="section-label">💭 언젠가 할일</div>
+            <div class="card">
+              <div class="someday-add-row">
+                <input id="somedayInput" type="text" placeholder="나중에 할 것 같은 일 아무거나 적어보세요" />
+                <button id="somedayAddBtn">추가</button>
+              </div>
+              <div id="somedayList"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -248,6 +277,25 @@
   </div>
 </div>
 
+<!-- 할일 추가/수정 시트 (다가오는 계획 보드용) -->
+<div class="sheet-bg" id="todoSheetBg">
+  <div class="sheet">
+    <h2 id="todoSheetTitle">할일 추가</h2>
+    <div class="field"><label>할일 제목</label><input id="td_title" type="text" placeholder="예: 은행 다녀오기" /></div>
+    <div class="field split">
+      <div><label>시작 날짜</label><input id="td_start" type="date" /></div>
+      <div><label>종료 날짜(선택, 기간이면)</label><input id="td_end" type="date" /></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="todoCancelBtn">취소</button>
+      <button class="btn-primary" id="todoSaveBtn">저장</button>
+    </div>
+    <div class="sheet-actions" id="todoDeleteRow" style="display:none;">
+      <button class="btn-ghost" id="todoDeleteBtn" style="color:var(--danger);">이 할일 삭제</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
   // ── Supabase 설정 (그리지우 프로젝트, tok_ 접두사 테이블 사용) ──
@@ -264,6 +312,8 @@
   let logsToday = new Set(); // habit_id set, 오늘 완료된 것
   let events = [];
   let somedayItems = [];
+  let timeBlocks = []; // tok_time_blocks: 타임블럭 탭의 이름표 그룹핑용
+  let todos = []; // tok_todos: 다가오는 계획 보드용 (날짜 있는 1회성 할일)
   let currentPage = "home";
   let homeView = "list"; // "list" | "timeline"
 
@@ -315,18 +365,24 @@
       { data: logData, error: e2 },
       { data: eventData, error: e3 },
       { data: somedayData, error: e5 },
+      { data: blockData, error: e6 },
+      { data: todoData, error: e7 },
     ] = await Promise.all([
       sb.from("tok_habits").select("*").order("start_minute", { nullsFirst: false }).order("created_at"),
       sb.from("tok_habit_logs").select("habit_id").eq("done_date", todayStr()),
       sb.from("tok_events").select("*").order("event_date").order("event_time"),
       sb.from("tok_someday").select("*").order("created_at"),
+      sb.from("tok_time_blocks").select("*").order("sort_order"),
+      sb.from("tok_todos").select("*").order("start_date"),
     ]);
-    const firstError = e1 || e2 || e3 || e5;
+    const firstError = e1 || e2 || e3 || e5 || e6 || e7;
     if (firstError) { alert("불러오기 실패: " + firstError.message); return; }
     tasks = taskData || [];
     logsToday = new Set((logData || []).map(r => r.habit_id));
     events = eventData || [];
     somedayItems = somedayData || [];
+    timeBlocks = blockData || [];
+    todos = todoData || [];
     renderHome();
     renderSchedule();
     renderTodo();
@@ -364,7 +420,9 @@
     $("homeEmpty").style.display = active.length ? "none" : "block";
 
     if (homeView === "timeline") renderHomeTimeline(active);
-    else renderHomeList(active);
+    else renderHomeBlocks(active);
+
+    renderPlanBoard();
 
     document.querySelectorAll(".home-check").forEach(cb => {
       cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
@@ -397,21 +455,41 @@
       </div>`;
   }
 
-  // 목록 보기: 시간이 있는 습관은 시간순으로, 없는 습관은 아래에 따로
-  function renderHomeList(active) {
+  function timedRowHtml(t) {
+    const done = logsToday.has(t.id);
+    return `<div class="task-row ${done?'done':''}">
+      <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
+      <span style="color:var(--sub);font-size:12px;margin-right:6px;">${minutesToHHMM(t.start_minute)}</span>
+      <span>${escapeHtml(t.name)}</span>
+    </div>`;
+  }
+
+  // 타임블럭 보기: tok_time_blocks의 이름표(아침/오전/오후/저녁/밤 등) 구간에 맞춰
+  // 시간이 있는 습관을 그룹핑해서 보여줌. block_id 컬럼은 더이상 쓰지 않고,
+  // start_minute이 어느 블럭 구간에 들어가는지로 매번 다시 계산함.
+  function renderHomeBlocks(active) {
     const { timed, untimed } = splitByTime(active);
-    const timedHtml = timed.length ? `
-      <div class="card">
-        ${timed.map(t => {
-          const done = logsToday.has(t.id);
-          return `<div class="task-row ${done?'done':''}">
-            <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
-            <span style="color:var(--sub);font-size:12px;margin-right:6px;">${minutesToHHMM(t.start_minute)}</span>
-            <span>${escapeHtml(t.name)}</span>
-          </div>`;
-        }).join("")}
-      </div>` : "";
-    $("timelineWrap").innerHTML = timedHtml + untimedListHtml(untimed, "시간 없음");
+    let html = "";
+
+    if (timeBlocks.length) {
+      const covered = new Set();
+      timeBlocks.forEach(block => {
+        const inBlock = timed.filter(t => t.start_minute >= block.start_minute && t.start_minute < block.end_minute);
+        if (!inBlock.length) return;
+        inBlock.forEach(t => covered.add(t.id));
+        html += `<div class="section-label" style="margin:14px 2px 8px;">${escapeHtml(block.title)}</div>`;
+        html += `<div class="card">${inBlock.map(timedRowHtml).join("")}</div>`;
+      });
+      const uncovered = timed.filter(t => !covered.has(t.id));
+      if (uncovered.length) {
+        html += `<div class="card">${uncovered.map(timedRowHtml).join("")}</div>`;
+      }
+    } else if (timed.length) {
+      // 타임블럭이 하나도 설정 안 돼있으면 그냥 시간순으로만 보여줌
+      html += `<div class="card">${timed.map(timedRowHtml).join("")}</div>`;
+    }
+
+    $("timelineWrap").innerHTML = html + untimedListHtml(untimed, "시간 없음");
   }
 
   // 타임라인 보기: 15분 단위 그리드 위에 습관을 시작 시각·소요시간에 맞춰 배치.
@@ -503,6 +581,153 @@
     grid.onpointerup = finish;
     grid.onpointercancel = () => { $("tlAddPreview")?.remove(); tlAddState = null; };
   }
+
+  // ── 집 : 다가오는 계획 (7일 보드) ──
+  // 오늘 칸에는 습관도 함께 보여주고, 나머지 6일은 tok_todos(날짜 있는 1회성 할일)만 보여줌.
+  // 빈 날짜를 클릭하면 그 날짜로, 여러 날짜에 걸쳐 세로로 드래그하면 시작~종료 기간으로 할일 추가 시트가 열림.
+  function planDayList() {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+    return days;
+  }
+
+  function renderPlanBoard() {
+    const days = planDayList();
+    const active = tasks.filter(t => t.is_active);
+
+    $("planBoard").innerHTML = days.map((dateStr, idx) => {
+      const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+      const habitHtml = idx === 0 ? active.map(t => {
+        const done = logsToday.has(t.id);
+        return `<div class="plan-row habit ${done?'done':''}">
+          <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
+          <span class="plan-todo-title">${escapeHtml(t.name)}</span>
+        </div>`;
+      }).join("") : "";
+      const todoHtml = dayTodos.map(td => {
+        const isRange = td.end_date && td.end_date !== td.start_date;
+        return `<div class="plan-row todo ${td.is_done?'done':''}">
+          <input type="checkbox" ${td.is_done?"checked":""} data-id="${td.id}" class="plan-todo-check" />
+          <span class="plan-todo-title">${escapeHtml(td.title)}</span>
+          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
+          <button class="plan-todo-edit" data-id="${td.id}">✎</button>
+        </div>`;
+      }).join("");
+      const bodyHtml = habitHtml + todoHtml;
+      return `<div class="plan-day" data-idx="${idx}" data-date="${dateStr}">
+        <div class="plan-day-label">${idx===0 ? "오늘" : formatDateShort(dateStr)}</div>
+        <div class="plan-day-body">${bodyHtml || '<div class="plan-day-empty">+ 추가</div>'}</div>
+      </div>`;
+    }).join("");
+
+    document.querySelectorAll(".plan-todo-check").forEach(cb => {
+      cb.onchange = async () => {
+        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        const t = todos.find(x => x.id === cb.dataset.id);
+        if (t) t.is_done = cb.checked;
+        renderPlanBoard();
+      };
+    });
+    document.querySelectorAll(".plan-todo-edit").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        openTodoSheet(todos.find(t => t.id === btn.dataset.id));
+      };
+    });
+
+    attachPlanBoardDrag(days);
+  }
+
+  let planAddState = null;
+  function attachPlanBoardDrag(days) {
+    const board = $("planBoard");
+    if (!board) return;
+
+    const idxFromPoint = (x, y) => {
+      const el = document.elementFromPoint(x, y)?.closest(".plan-day");
+      return el ? parseInt(el.dataset.idx, 10) : null;
+    };
+    const highlight = (a, b) => {
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      document.querySelectorAll(".plan-day").forEach(el => {
+        const idx = parseInt(el.dataset.idx, 10);
+        el.classList.toggle("drag-hi", idx >= lo && idx <= hi);
+      });
+    };
+    const clearHighlight = () => document.querySelectorAll(".plan-day").forEach(el => el.classList.remove("drag-hi"));
+
+    board.onpointerdown = (e) => {
+      if (e.target.closest(".plan-todo-check") || e.target.closest(".plan-todo-edit") || e.target.closest(".home-check")) return;
+      const dayEl = e.target.closest(".plan-day");
+      if (!dayEl) return;
+      const startIdx = parseInt(dayEl.dataset.idx, 10);
+      planAddState = { startIdx, currentIdx: startIdx, moved: false };
+      board.setPointerCapture?.(e.pointerId);
+      highlight(startIdx, startIdx);
+    };
+    board.onpointermove = (e) => {
+      if (!planAddState) return;
+      const idx = idxFromPoint(e.clientX, e.clientY);
+      if (idx == null) return;
+      if (idx !== planAddState.startIdx) planAddState.moved = true;
+      planAddState.currentIdx = idx;
+      highlight(planAddState.startIdx, idx);
+    };
+    const finish = () => {
+      if (!planAddState) return;
+      const { startIdx, currentIdx, moved } = planAddState;
+      const lo = Math.min(startIdx, currentIdx), hi = Math.max(startIdx, currentIdx);
+      clearHighlight();
+      planAddState = null;
+      openTodoSheet(null, { startDate: days[lo], endDate: moved ? days[hi] : null });
+    };
+    board.onpointerup = finish;
+    board.onpointercancel = () => { clearHighlight(); planAddState = null; };
+  }
+
+  // existing: 수정, null: 새로 추가(prefill로 시작~종료 날짜 지정 가능)
+  function openTodoSheet(existing, prefill) {
+    $("todoSheetTitle").textContent = existing ? "할일 수정" : "할일 추가";
+    $("td_title").value = existing ? existing.title : "";
+    $("td_start").value = existing ? existing.start_date : (prefill?.startDate || todayStr());
+    $("td_end").value = existing ? (existing.end_date || "") : (prefill?.endDate || "");
+    $("todoSheetBg").dataset.editId = existing ? existing.id : "";
+    $("todoDeleteRow").style.display = existing ? "flex" : "none";
+    $("todoSheetBg").classList.add("open");
+    $("td_title").focus();
+  }
+  $("todoCancelBtn").onclick = () => $("todoSheetBg").classList.remove("open");
+  $("todoSaveBtn").onclick = async () => {
+    const title = $("td_title").value.trim();
+    const start_date = $("td_start").value;
+    const end_date = $("td_end").value || null;
+    if (!title || !start_date) { alert("제목과 시작 날짜는 꼭 입력해주세요."); return; }
+    if (end_date && end_date < start_date) { alert("종료 날짜는 시작 날짜보다 빠를 수 없어요."); return; }
+    const editId = $("todoSheetBg").dataset.editId;
+    let error;
+    if (editId) {
+      ({ error } = await sb.from("tok_todos").update({ title, start_date, end_date }).eq("id", editId));
+    } else {
+      ({ error } = await sb.from("tok_todos").insert({ title, start_date, end_date }));
+    }
+    if (error) { alert("저장 실패: " + error.message); return; }
+    $("todoSheetBg").classList.remove("open");
+    await loadAll();
+  };
+  $("todoDeleteBtn").onclick = async () => {
+    const editId = $("todoSheetBg").dataset.editId;
+    if (!editId) return;
+    if (!confirm("이 할일을 삭제할까요?")) return;
+    const { error } = await sb.from("tok_todos").delete().eq("id", editId);
+    if (error) { alert("삭제 실패: " + error.message); return; }
+    $("todoSheetBg").classList.remove("open");
+    await loadAll();
+  };
 
   $("viewListBtn").onclick = () => {
     homeView = "list";
