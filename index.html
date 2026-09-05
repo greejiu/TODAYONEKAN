@@ -667,7 +667,7 @@
       const origDuration = parseInt(task.dataset.duration, 10);
       const resizable = kind === "habit"; // 일정은 길이 개념이 없어 조절 제외
 
-      let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null;
+      let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null, isMouse = false;
       let longPressTimer = null;
       let pendingStart = origStart, pendingDuration = origDuration;
 
@@ -723,15 +723,20 @@
         startY = e.clientY;
         edgeAtStart = zoneAt(e.clientY);
         dragKind = null;
+        isMouse = e.pointerType === "mouse";
         task.setPointerCapture?.(e.pointerId);
 
-        longPressTimer = setTimeout(() => {
-          longPressTimer = null;
-          if (cancelled) return;
-          dragKind = "move";
-          task.classList.add("dragging");
-          clearHoverHint();
-        }, TL_LONG_PRESS_MS);
+        if (!isMouse) {
+          // 터치/펜은 스크롤 제스처와 구분해야 해서 0.3초 대기 후 이동으로 전환
+          longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            if (cancelled) return;
+            dragKind = "move";
+            task.classList.add("dragging");
+            clearHoverHint();
+          }, TL_LONG_PRESS_MS);
+        }
+        // 마우스는 대기 없이 pointermove에서 살짝만 움직이면 바로 이동/조절 시작(아래)
       });
       task.addEventListener("pointermove", (e) => {
         if (!pressed) {
@@ -744,11 +749,17 @@
         const dy = e.clientY - startY;
         if (dragKind === null) {
           if (cancelled) return;
-          if (Math.abs(dy) > 6) {
+          const moveThreshold = isMouse ? 3 : 6;
+          if (Math.abs(dy) > moveThreshold) {
             clearTimer();
             if (edgeAtStart) {
               dragKind = edgeAtStart === "top" ? "resize-top" : "resize-bottom";
+            } else if (isMouse) {
+              dragKind = "move";
+              task.classList.add("dragging");
+              clearHoverHint();
             } else {
+              // 터치 몸통에서 0.3초 되기 전에 움직임 → 스크롤로 보고 취소
               cancelled = true;
               return;
             }
