@@ -241,6 +241,39 @@
   .habit-history-check{position:absolute;bottom:0;right:2px;font-size:8px;}
   .habit-history-note{font-size:11px;color:var(--sub);margin-top:12px;line-height:1.5;}
 
+  /* ── 집 : 지금 할 일 카드(할일 1개를 하위 행동으로 쪼개기, onekan v1 참고) ── */
+  .focus-card{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 8px 20px rgba(154,140,240,.12);margin-bottom:6px;}
+  .focus-head{font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;}
+  .focus-sub-empty,.focus-empty{padding:4px 2px;color:var(--sub);font-size:12px;line-height:1.5;}
+  .focus-pick-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 0 6px;color:var(--sub);font-size:12px;}
+  .focus-pick-head button{border:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:4px 8px;font-size:11px;cursor:pointer;}
+  .focus-pick-list{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;margin-bottom:8px;}
+  .focus-pick-row{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:13px;text-align:left;cursor:pointer;}
+  .focus-pick-row:hover{background:var(--bg);}
+  .focus-pick-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+  .focus-pick-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .focus-add-form,.focus-sub-add-form{display:grid;grid-template-columns:1fr auto;gap:8px;}
+  .focus-add-form input,.focus-sub-add-form input{width:100%;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font:inherit;}
+  .focus-meta{display:flex;align-items:center;gap:8px;min-height:24px;margin-bottom:6px;}
+  .focus-time-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;}
+  .focus-state{margin-left:auto;color:var(--accent);font-size:11px;font-weight:700;}
+  .focus-state.late{color:#c07a4f;}
+  .focus-active-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .focus-active-title{font-size:16px;font-weight:700;line-height:1.4;overflow-wrap:anywhere;}
+  .focus-change-btn{flex:none;border:none;background:none;color:var(--sub);font-size:11px;padding:4px 6px;cursor:pointer;white-space:nowrap;}
+  .focus-change-btn:hover{color:var(--text);}
+  .focus-sub-label{font-size:11px;font-weight:700;color:var(--sub);margin-bottom:4px;}
+  .focus-sub-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px;}
+  .focus-sub-row{display:flex;align-items:center;gap:8px;padding:8px 9px;background:#fff;}
+  .focus-sub-row+.focus-sub-row{border-top:1px solid var(--line);}
+  .focus-sub-check{width:20px;height:20px;flex-shrink:0;border:1.5px solid var(--line);border-radius:6px;background:#fff;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .focus-sub-check.checked{background:var(--accent);border-color:var(--accent);}
+  .focus-sub-title{flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;}
+  .focus-sub-row.checked .focus-sub-title{color:var(--sub);text-decoration:line-through;}
+  .focus-sub-del{flex:none;border:none;background:none;color:var(--sub);font-size:15px;cursor:pointer;width:24px;height:24px;}
+  .focus-sub-del:hover{color:var(--danger);}
+  .focus-progress{color:var(--sub);font-size:11px;}
+
   .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px rgba(154,140,240,.4);cursor:pointer;z-index:8;}
   @media (max-width:760px){ .fab{bottom:78px;} }
 
@@ -289,6 +322,11 @@
         <div class="progress-wrap">
           <div class="progress-text" id="homeProgressText">오늘 0/0 완료</div>
           <div class="progress-bar"><div class="progress-fill" id="homeProgressFill" style="width:0%"></div></div>
+        </div>
+
+        <div class="focus-card card" id="focusTaskCard">
+          <div class="focus-head"><span id="focusTaskTitle">지금 할 일</span></div>
+          <div id="focusTaskBody"></div>
         </div>
 
         <div class="home-grid3">
@@ -493,6 +531,9 @@
   let timeBlocks = []; // tok_time_blocks: 타임블럭 탭의 이름표 그룹핑용
   let todos = []; // tok_todos: 다가오는 계획 보드용 (날짜 있는 1회성 할일)
   let habitCategories = []; // tok_habit_categories: 습관 카테고리(1단계, 이름+색상)
+  let todoSubtasks = []; // tok_todo_subtasks: 지금 할일 카드에서 쓰는 하위 행동 목록
+  let manualFocusTodoId = null; // "다른 할일로 바꾸기"로 수동 지정한 할일 id — 새로고침하면 자동 선택으로 리셋(세션 전용, DB 저장 안 함)
+  let focusPickerOpen = false; // 지금 할일 카드가 "선택 목록" 모드인지
   let habitLogs = []; // tok_habit_logs 전체({habit_id, done_date}) — 반복주기 "마지막 완료일" 계산용
   let currentPage = "home";
   let homeView = "list"; // "list" | "timeline"
@@ -547,6 +588,7 @@
       { data: blockData, error: e6 },
       { data: todoData, error: e7 },
       { data: habitCatData, error: e8 },
+      { data: subtaskData, error: e9 },
     ] = await Promise.all([
       sb.from("tok_habits").select("*").order("start_minute", { nullsFirst: false }).order("created_at"),
       sb.from("tok_habit_logs").select("habit_id, done_date"),
@@ -555,8 +597,9 @@
       sb.from("tok_time_blocks").select("*").order("sort_order"),
       sb.from("tok_todos").select("*").order("start_date"),
       sb.from("tok_habit_categories").select("*").order("sort_order"),
+      sb.from("tok_todo_subtasks").select("*").order("sort_order"),
     ]);
-    const firstError = e1 || e2 || e3 || e5 || e6 || e7 || e8;
+    const firstError = e1 || e2 || e3 || e5 || e6 || e7 || e8 || e9;
     if (firstError) { alert("불러오기 실패: " + firstError.message); return; }
     tasks = taskData || [];
     habitLogs = logData || []; // 전체 완료 이력(반복주기의 "마지막 완료일" 계산용)
@@ -566,6 +609,7 @@
     timeBlocks = blockData || [];
     todos = todoData || [];
     habitCategories = habitCatData || [];
+    todoSubtasks = subtaskData || []; // tok_todo_subtasks: 지금 할일 카드의 하위 행동
     renderHome();
     renderSchedule();
     renderTodosPage();
@@ -580,9 +624,195 @@
     $("homeProgressFill").style.width = active.length ? `${Math.round(doneCount/active.length*100)}%` : "0%";
   }
 
+  // ── 집 : 지금 할 일 카드(onekan v1의 focus-task-card 참고, 할일 1개를 하위 행동으로 쪼개기) ──
+  // 습관은 별도 탭에서 실행하므로 여기선 오늘 날짜의 tok_todos만 대상으로 함.
+  function todayFocusTodos() {
+    const t = todayStr();
+    return todos
+      .filter(td => !td.is_done && td.start_date <= t && (td.end_date || td.start_date) >= t)
+      .sort((a, b) => (a.todo_time || "99:99:99").localeCompare(b.todo_time || "99:99:99") || String(a.title || "").localeCompare(String(b.title || ""), "ko"));
+  }
+  function focusTimeWindow(todo) {
+    if (!todo.todo_time) return null;
+    const start = hhmmToMinutes(todo.todo_time.slice(0, 5));
+    return { start, end: start + 30 };
+  }
+  function minuteOfNow() {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }
+  function focusMinuteLabel(m) {
+    return `${pad2(Math.floor(m / 60) % 24)}:${pad2(m % 60)}`;
+  }
+  function relativeMinutesLabel(mins) {
+    const value = Math.max(0, Math.round(mins));
+    if (value < 60) return `${value}분 후`;
+    const h = Math.floor(value / 60), r = value % 60;
+    return r ? `${h}시간 ${r}분 후` : `${h}시간 후`;
+  }
+  function windowMode(window, nowMin) {
+    if (!window) return "today";
+    if (window.start <= nowMin && nowMin < window.end) return "current";
+    if (window.start > nowMin) return "next";
+    return "past";
+  }
+  // 자동 선택: 수동 지정이 있으면 그걸 우선, 없으면 지금 시각이 걸쳐있는 항목 → 다음 시작할 항목 → 방금 지난 항목 → 시간 없는 첫 항목 순.
+  function selectFocusTodo() {
+    const list = todayFocusTodos();
+    if (!list.length) return null;
+    const nowMin = minuteOfNow();
+    if (manualFocusTodoId) {
+      const manual = list.find(td => td.id === manualFocusTodoId);
+      if (manual) {
+        const w = focusTimeWindow(manual);
+        return { todo: manual, mode: windowMode(w, nowMin), timing: w };
+      }
+      manualFocusTodoId = null; // 완료·삭제 등으로 오늘 목록에서 사라졌으면 자동 선택으로 되돌림
+    }
+    const timed = list.filter(td => td.todo_time);
+    const current = timed.find(td => windowMode(focusTimeWindow(td), nowMin) === "current");
+    if (current) return { todo: current, mode: "current", timing: focusTimeWindow(current) };
+    const upcoming = timed.filter(td => focusTimeWindow(td).start > nowMin).sort((a, b) => focusTimeWindow(a).start - focusTimeWindow(b).start)[0];
+    if (upcoming) return { todo: upcoming, mode: "next", timing: focusTimeWindow(upcoming) };
+    const past = [...timed].reverse().find(td => focusTimeWindow(td).end <= nowMin);
+    if (past) return { todo: past, mode: "past", timing: focusTimeWindow(past) };
+    return { todo: list[0], mode: "today", timing: null };
+  }
+  function focusMetaHtml(sel) {
+    if (!sel.timing) return `<span class="focus-time-badge">시간 없음</span><span class="focus-state">오늘</span>`;
+    if (sel.mode === "next") {
+      return `<span class="focus-time-badge">${focusMinuteLabel(sel.timing.start)} 시작 · ${relativeMinutesLabel(sel.timing.start - minuteOfNow())}</span><span class="focus-state">예정</span>`;
+    }
+    const label = sel.mode === "current" ? "진행 중" : "예정 시간 지남";
+    return `<span class="focus-time-badge">${focusMinuteLabel(sel.timing.start)}–${focusMinuteLabel(sel.timing.end)}</span><span class="focus-state${sel.mode === "past" ? " late" : ""}">${label}</span>`;
+  }
+  function subtasksFor(todoId) {
+    return todoSubtasks.filter(s => s.todo_id === todoId).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  }
+  function focusActiveHtml(sel) {
+    const todo = sel.todo;
+    const steps = subtasksFor(todo.id);
+    const doneCount = steps.filter(s => s.is_done).length;
+    const rows = steps.length
+      ? steps.map(s => `
+        <div class="focus-sub-row${s.is_done ? " checked" : ""}">
+          <button class="focus-sub-check${s.is_done ? " checked" : ""}" type="button" data-focus-sub-toggle="${s.id}">${s.is_done ? "✓" : ""}</button>
+          <span class="focus-sub-title">${escapeHtml(s.title)}</span>
+          <button class="focus-sub-del" type="button" data-focus-sub-del="${s.id}">×</button>
+        </div>`).join("")
+      : `<div class="focus-sub-empty">아직 작은 행동이 없어요. 바로 시작할 수 있을 만큼 작게 나눠보세요.</div>`;
+    return `
+      <div class="focus-meta">${focusMetaHtml(sel)}</div>
+      <div class="focus-active-head">
+        <div class="focus-active-title">${escapeHtml(todo.title || "이름 없는 할일")}</div>
+        <button class="focus-change-btn" type="button" id="focusChangeBtn">다른 할일로 바꾸기</button>
+      </div>
+      <div class="focus-sub-label">작은 행동</div>
+      <div class="focus-sub-list">${rows}</div>
+      <form class="focus-sub-add-form" id="focusSubAddForm" data-todo-id="${todo.id}" autocomplete="off">
+        <input type="text" maxlength="120" placeholder="작은 행동 추가" />
+        <button class="btn-ghost" type="submit">추가</button>
+      </form>
+      ${steps.length ? `<div class="focus-progress">${doneCount}/${steps.length} 완료</div>` : ""}
+    `;
+  }
+  function focusPickerHtml() {
+    const list = todayFocusTodos();
+    const body = list.length
+      ? `<div class="focus-pick-list">${list.map(td => `<button class="focus-pick-row" type="button" data-focus-pick="${td.id}"><span class="focus-pick-dot"></span><span class="focus-pick-title">${escapeHtml(td.title || "이름 없는 할일")}</span></button>`).join("")}</div>`
+      : `<div class="focus-sub-empty">오늘 할일이 아직 없어요. 아래에서 하나 추가해볼까요?</div>`;
+    return `
+      ${list.length ? `<div class="focus-pick-head"><span>지금 할 일을 직접 선택할 수 있어요.</span><button type="button" id="focusAutoBtn">자동 선택</button></div>` : ""}
+      ${body}
+      <form class="focus-add-form" id="focusAddForm" autocomplete="off">
+        <input type="text" maxlength="120" placeholder="새 할일 추가" />
+        <button class="btn-ghost" type="submit">추가</button>
+      </form>
+    `;
+  }
+  function renderFocusCard() {
+    const host = $("focusTaskBody");
+    if (!host) return;
+    const sel = focusPickerOpen ? null : selectFocusTodo();
+    $("focusTaskTitle").textContent = focusPickerOpen ? "할 일 선택" : (sel ? (sel.mode === "next" ? "다음 할 일" : "지금 할 일") : "지금 할 일");
+    host.innerHTML = sel ? focusActiveHtml(sel) : focusPickerHtml();
+    wireFocusCard();
+  }
+  function wireFocusCard() {
+    const changeBtn = $("focusChangeBtn");
+    if (changeBtn) changeBtn.onclick = () => { focusPickerOpen = true; renderFocusCard(); };
+    const autoBtn = $("focusAutoBtn");
+    if (autoBtn) autoBtn.onclick = () => { manualFocusTodoId = null; focusPickerOpen = false; renderFocusCard(); };
+    document.querySelectorAll("#focusTaskBody .focus-pick-row").forEach(btn => {
+      btn.onclick = () => { manualFocusTodoId = btn.dataset.focusPick; focusPickerOpen = false; renderFocusCard(); };
+    });
+    document.querySelectorAll("#focusTaskBody .focus-sub-check").forEach(btn => {
+      btn.onclick = () => toggleFocusSubtask(btn.dataset.focusSubToggle);
+    });
+    document.querySelectorAll("#focusTaskBody .focus-sub-del").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.focusSubDel;
+        const { error } = await sb.from("tok_todo_subtasks").delete().eq("id", id);
+        if (error) { alert("삭제 실패: " + error.message); return; }
+        todoSubtasks = todoSubtasks.filter(s => s.id !== id);
+        renderFocusCard();
+      };
+    });
+    const subAddForm = $("focusSubAddForm");
+    if (subAddForm) subAddForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = subAddForm.querySelector("input");
+      const title = input.value.trim();
+      if (!title) return;
+      const todoId = subAddForm.dataset.todoId;
+      const sortOrder = subtasksFor(todoId).length;
+      const { data, error } = await sb.from("tok_todo_subtasks").insert({ todo_id: todoId, title, sort_order: sortOrder }).select().single();
+      if (error) { alert("추가 실패: " + error.message); return; }
+      todoSubtasks.push(data);
+      input.value = "";
+      renderFocusCard();
+    };
+    const addForm = $("focusAddForm");
+    if (addForm) addForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = addForm.querySelector("input");
+      const title = input.value.trim();
+      if (!title) return;
+      const { data, error } = await sb.from("tok_todos").insert({ title, start_date: todayStr() }).select().single();
+      if (error) { alert("추가 실패: " + error.message); return; }
+      todos.push(data);
+      manualFocusTodoId = data.id;
+      focusPickerOpen = false;
+      input.value = "";
+      await loadAll();
+    };
+  }
+  async function toggleFocusSubtask(subId) {
+    const step = todoSubtasks.find(s => s.id === subId);
+    if (!step) return;
+    const turnedOn = !step.is_done;
+    const { error } = await sb.from("tok_todo_subtasks").update({ is_done: turnedOn }).eq("id", subId);
+    if (error) { alert("변경 실패: " + error.message); return; }
+    step.is_done = turnedOn;
+    const siblings = subtasksFor(step.todo_id);
+    const allDone = siblings.length > 0 && siblings.every(s => s.is_done);
+    if (turnedOn && allDone) {
+      const { error: doneErr } = await sb.from("tok_todos").update({ is_done: true }).eq("id", step.todo_id);
+      if (!doneErr) {
+        const t = todos.find(x => x.id === step.todo_id);
+        if (t) t.is_done = true;
+        if (manualFocusTodoId === step.todo_id) manualFocusTodoId = null;
+        await loadAll();
+        return;
+      }
+    }
+    renderFocusCard();
+  }
+
   // ── 집 : 오늘 한눈에 보기(2026-09-05 재개편 — 다가오는 일정 카드 제거, 오늘 열에 습관도 통합) ──
   function renderHome() {
     renderProgress();
+    renderFocusCard();
     renderAgendaAllDay();
     renderAgendaTimed();
     renderPlanUpcomingBoard();
