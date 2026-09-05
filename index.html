@@ -28,7 +28,7 @@
   .sidebar h1{font-size:15px;margin:0 0 20px;padding-left:8px;}
   .navitem{display:flex;align-items:center;gap:8px;padding:10px 8px;border-radius:10px;color:var(--sub);font-size:14px;cursor:pointer;margin-bottom:4px;}
   .navitem.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
-  .content{flex:1;min-width:0;padding:20px 24px 100px;max-width:640px;}
+  .content{flex:1;min-width:0;padding:20px 24px 100px;max-width:1100px;}
   .pagehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .pagehead h2{font-size:18px;margin:0;}
   #logoutBtn{background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;}
@@ -127,6 +127,19 @@
   .home-col{min-width:0;}
   @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
 
+  /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
+  .home-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start;}
+  @media (max-width:900px){ .home-grid3{grid-template-columns:1fr;} }
+  .agenda-head{display:flex;align-items:center;justify-content:center;gap:10px;}
+  .agenda-nav{background:none;border:none;color:var(--sub);cursor:pointer;font-size:13px;padding:2px 8px;border-radius:6px;}
+  .agenda-nav:hover{color:var(--accent);background:var(--accent-soft);}
+  .agenda-row{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:13px;}
+  .agenda-row:last-child{border-bottom:none;}
+  .agenda-row.done{opacity:.5;text-decoration:line-through;}
+  .agenda-time{color:var(--sub);font-size:12px;width:36px;flex-shrink:0;}
+  .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;flex-shrink:0;}
+  .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
   /* ── 집 : 다가오는 계획 (7일 보드) ── */
   .plan-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
   .plan-day:last-child{border-bottom:none;}
@@ -199,7 +212,8 @@
       <h1>오늘한칸</h1>
       <div class="navitem" data-page="home">🏠 집</div>
       <div class="navitem" data-page="schedule">📅 일정</div>
-      <div class="navitem" data-page="todo">✅ 습관</div>
+      <div class="navitem" data-page="todos">✓ 할일</div>
+      <div class="navitem" data-page="todo">⟳ 습관</div>
       <div style="margin-top:20px;"><button id="logoutBtn">로그아웃</button></div>
     </div>
 
@@ -217,29 +231,27 @@
         <div class="card" id="upcomingCard"></div>
         <div id="upcomingEmpty" class="empty" style="display:none;padding:16px 0;">다가오는 일정이 없어요.</div>
 
-        <div class="home-grid">
+        <div class="home-grid3">
           <div class="home-col">
-            <div class="section-label">🕒 오늘의 습관</div>
-            <div class="view-toggle">
-              <button id="viewListBtn" class="active">타임블럭</button>
-              <button id="viewTimelineBtn">타임라인</button>
+            <div class="section-label agenda-head">
+              <button id="agendaPrevBtn" class="agenda-nav">◀</button>
+              <span id="agendaDateLabel">오늘</span>
+              <button id="agendaNextBtn" class="agenda-nav">▶</button>
             </div>
-            <div id="timelineWrap"></div>
-            <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 습관이 없어요.<br/>'습관' 탭에서 먼저 추가해보세요.</div>
+            <div class="card" id="homeAgendaList"></div>
+            <div id="homeAgendaEmpty" class="empty" style="display:none;">이 날 일정·할일이 없어요.</div>
           </div>
 
           <div class="home-col">
             <div class="section-label">🗓 다가오는 계획</div>
-            <div class="card" id="planBoard"></div>
+            <div class="card" id="planSummaryList"></div>
+            <div id="planSummaryEmpty" class="empty" style="display:none;">예정된 할일이 없어요.</div>
+          </div>
 
-            <div class="section-label">💭 언젠가 할일</div>
-            <div class="card">
-              <div class="someday-add-row">
-                <input id="somedayInput" type="text" placeholder="나중에 할 것 같은 일 아무거나 적어보세요" />
-                <button id="somedayAddBtn">추가</button>
-              </div>
-              <div id="somedayList"></div>
-            </div>
+          <div class="home-col">
+            <div class="section-label">💭 언젠가</div>
+            <div class="card" id="somedaySummaryList"></div>
+            <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
           </div>
         </div>
       </div>
@@ -257,9 +269,36 @@
         <div id="scheduleEmpty" class="empty" style="display:none;">등록된 일정이 없어요.<br/>위 입력창에서 바로 추가해보세요.</div>
       </div>
 
+      <!-- 할일 -->
+      <div class="page" data-page="todos" style="display:none;">
+        <div class="pagehead"><h2>✓ 할일</h2></div>
+
+        <div class="section-label">🗓 다가오는 계획</div>
+        <div class="card" id="planBoard"></div>
+
+        <div class="section-label">💭 언젠가 할일</div>
+        <div class="card">
+          <div class="someday-add-row">
+            <input id="somedayInput" type="text" placeholder="나중에 할 것 같은 일 아무거나 적어보세요" />
+            <button id="somedayAddBtn">추가</button>
+          </div>
+          <div id="somedayList"></div>
+        </div>
+      </div>
+
       <!-- 습관 -->
       <div class="page" data-page="todo" style="display:none;">
-        <div class="pagehead"><h2>✅ 습관 관리</h2></div>
+        <div class="pagehead"><h2>⟳ 습관</h2></div>
+
+        <div class="section-label">🕒 오늘의 습관</div>
+        <div class="view-toggle">
+          <button id="viewListBtn" class="active">타임블럭</button>
+          <button id="viewTimelineBtn">타임라인</button>
+        </div>
+        <div id="timelineWrap"></div>
+        <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 습관이 없어요.<br/>아래에서 먼저 추가해보세요.</div>
+
+        <div class="section-label" style="margin-top:20px;">습관 관리</div>
         <div class="inline-add-row">
           <input id="tk_name" type="text" placeholder="습관 이름" />
           <input id="tk_start" type="time" />
@@ -275,7 +314,8 @@
   <div class="bottombar">
     <div class="navitem" data-page="home">🏠<br/>집</div>
     <div class="navitem" data-page="schedule">📅<br/>일정</div>
-    <div class="navitem" data-page="todo">✅<br/>습관</div>
+    <div class="navitem" data-page="todos">✓<br/>할일</div>
+    <div class="navitem" data-page="todo">⟳<br/>습관</div>
   </div>
 </div>
 
@@ -386,6 +426,7 @@
     todos = todoData || [];
     renderHome();
     renderSchedule();
+    renderTodosPage();
     renderTodo();
   }
 
@@ -412,23 +453,105 @@
     `).join("");
   }
 
-  // ── 집 : 오늘의 습관 (목록/타임라인 보기 전환) ──
+  // ── 집 : 오늘 한눈에 보기(2026-09-05 3열 개편) ──
+  // 습관 실행뷰(타임블럭/타임라인)는 '습관' 탭으로 이동함. 여기는 요약만 보여줌.
   function renderHome() {
     renderProgress();
     renderUpcoming();
+    renderHomeAgenda();
+    renderPlanSummary();
+    renderSomedaySummary();
+  }
 
-    const active = tasks.filter(t => t.is_active);
-    $("homeEmpty").style.display = active.length ? "none" : "block";
+  function addDaysStr(dateStr, delta) {
+    const dt = new Date(dateStr + "T00:00:00");
+    dt.setDate(dt.getDate() + delta);
+    return dt.toISOString().slice(0, 10);
+  }
 
-    if (homeView === "timeline") renderHomeTimeline(active);
-    else renderHomeBlocks(active);
+  let homeAgendaDate = todayStr();
 
-    renderPlanBoard();
+  // "오늘" 열: 날짜를 앞뒤로 넘기면서 그 날짜의 일정 + 그 날짜에 걸쳐있는 할일을 함께 봄(습관 없음)
+  function renderHomeAgenda() {
+    $("agendaDateLabel").textContent = formatDate(homeAgendaDate);
+    const dayEvents = events.filter(e => e.event_date === homeAgendaDate)
+      .sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
+    const dayTodos = todos.filter(td => td.start_date <= homeAgendaDate && (td.end_date || td.start_date) >= homeAgendaDate);
 
-    document.querySelectorAll(".home-check").forEach(cb => {
-      cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
+    const rows = [
+      ...dayEvents.map(e => `
+        <div class="agenda-row">
+          <span class="agenda-time">${e.event_time ? e.event_time.slice(0, 5) : ""}</span>
+          <span class="agenda-tag">일정</span>
+          <span class="agenda-title">${escapeHtml(e.title)}</span>
+        </div>`),
+      ...dayTodos.map(td => `
+        <div class="agenda-row ${td.is_done ? "done" : ""}">
+          <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="agenda-todo-check" />
+          <span class="agenda-tag">할일</span>
+          <span class="agenda-title">${escapeHtml(td.title)}</span>
+        </div>`),
+    ];
+    $("homeAgendaList").innerHTML = rows.join("");
+    $("homeAgendaEmpty").style.display = rows.length ? "none" : "block";
+
+    document.querySelectorAll(".agenda-todo-check").forEach(cb => {
+      cb.onchange = async () => {
+        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        const t = todos.find(x => x.id === cb.dataset.id);
+        if (t) t.is_done = cb.checked;
+        renderHomeAgenda();
+        renderPlanSummary();
+      };
     });
+  }
+  $("agendaPrevBtn").onclick = () => { homeAgendaDate = addDaysStr(homeAgendaDate, -1); renderHomeAgenda(); };
+  $("agendaNextBtn").onclick = () => { homeAgendaDate = addDaysStr(homeAgendaDate, 1); renderHomeAgenda(); };
 
+  // "다가오는 계획" 열: 미완료 할일 요약(최대 8개). 자세한 편집은 '할일' 탭에서.
+  function renderPlanSummary() {
+    const today = todayStr();
+    const upcoming = todos.filter(td => !td.is_done && (td.end_date || td.start_date) >= today)
+      .sort((a, b) => a.start_date.localeCompare(b.start_date))
+      .slice(0, 8);
+    $("planSummaryList").innerHTML = upcoming.map(td => `
+      <div class="task-row">
+        <input type="checkbox" data-id="${td.id}" class="plansum-check" />
+        <span style="color:var(--sub);font-size:12px;margin-right:6px;">${formatDateShort(td.start_date)}</span>
+        <span>${escapeHtml(td.title)}</span>
+      </div>`).join("");
+    $("planSummaryEmpty").style.display = upcoming.length ? "none" : "block";
+    document.querySelectorAll(".plansum-check").forEach(cb => {
+      cb.onchange = async () => {
+        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        await loadAll();
+      };
+    });
+  }
+
+  // "언젠가" 열: 요약만(최대 8개). 추가·삭제·이름수정은 '할일' 탭에서.
+  function renderSomedaySummary() {
+    const items = somedayItems.filter(s => !s.is_done).slice(0, 8);
+    $("somedaySummaryList").innerHTML = items.map(item => `
+      <div class="task-row">
+        <input type="checkbox" data-id="${item.id}" class="somedaysum-check" />
+        <span>${escapeHtml(item.title)}</span>
+      </div>`).join("");
+    $("somedaySummaryEmpty").style.display = items.length ? "none" : "block";
+    document.querySelectorAll(".somedaysum-check").forEach(cb => {
+      cb.onchange = async () => {
+        const { error } = await sb.from("tok_someday").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        await loadAll();
+      };
+    });
+  }
+
+  // ── 할일 탭: 다가오는 계획 보드 + 언젠가 할일 관리 ──
+  function renderTodosPage() {
+    renderPlanBoard();
     renderSomeday();
   }
 
@@ -843,8 +966,8 @@
     input.addEventListener("blur", commit);
   }
 
-  // ── 집 : 다가오는 계획 (7일 보드) ──
-  // 오늘 칸에는 습관도 함께 보여주고, 나머지 6일은 tok_todos(날짜 있는 1회성 할일)만 보여줌.
+  // ── 할일 탭 : 다가오는 계획 (7일 보드) ──
+  // tok_todos(날짜 있는 1회성 할일)만 보여줌 — 습관 실행은 '습관' 탭으로 이동함.
   // 빈 날짜를 클릭하면 그 날짜로, 여러 날짜에 걸쳐 세로로 드래그하면 시작~종료 기간으로 할일 추가 시트가 열림.
   function planDayList() {
     const days = [];
@@ -858,17 +981,9 @@
 
   function renderPlanBoard() {
     const days = planDayList();
-    const active = tasks.filter(t => t.is_active);
 
     $("planBoard").innerHTML = days.map((dateStr, idx) => {
       const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
-      const habitHtml = idx === 0 ? active.map(t => {
-        const done = logsToday.has(t.id);
-        return `<div class="plan-row habit ${done?'done':''}">
-          <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
-          <span class="plan-todo-title">${escapeHtml(t.name)}</span>
-        </div>`;
-      }).join("") : "";
       const todoHtml = dayTodos.map(td => {
         const isRange = td.end_date && td.end_date !== td.start_date;
         return `<div class="plan-row todo ${td.is_done?'done':''}" data-id="${td.id}">
@@ -878,7 +993,7 @@
           <button class="plan-todo-edit" data-id="${td.id}">✎</button>
         </div>`;
       }).join("");
-      const bodyHtml = habitHtml + todoHtml;
+      const bodyHtml = todoHtml;
       return `<div class="plan-day" data-idx="${idx}" data-date="${dateStr}">
         <div class="plan-day-label">${idx===0 ? "오늘" : formatDateShort(dateStr)}</div>
         <div class="plan-day-body">${bodyHtml || '<div class="plan-day-empty">+ 추가</div>'}</div>
@@ -1043,13 +1158,13 @@
     homeView = "list";
     $("viewListBtn").classList.add("active");
     $("viewTimelineBtn").classList.remove("active");
-    renderHome();
+    renderTodo();
   };
   $("viewTimelineBtn").onclick = () => {
     homeView = "timeline";
     $("viewTimelineBtn").classList.add("active");
     $("viewListBtn").classList.remove("active");
-    renderHome();
+    renderTodo();
   };
 
   async function toggleToday(taskId, checked) {
@@ -1234,8 +1349,16 @@
     return `${dt.getMonth()+1}/${dt.getDate()}(${days[dt.getDay()]})`;
   }
 
-  // ── 습관 관리 화면 ──
+  // ── 습관 탭: 실행뷰(타임블럭/타임라인) + 습관 관리 목록 ──
   function renderTodo() {
+    const active = tasks.filter(t => t.is_active);
+    $("homeEmpty").style.display = active.length ? "none" : "block";
+    if (homeView === "timeline") renderHomeTimeline(active);
+    else renderHomeBlocks(active);
+    document.querySelectorAll(".home-check").forEach(cb => {
+      cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
+    });
+
     $("todoEmpty").style.display = tasks.length ? "none" : "block";
     $("todoList").innerHTML = tasks.map(t => `
       <div class="todo-row ${t.is_active?"":"inactive"}" data-id="${t.id}">
