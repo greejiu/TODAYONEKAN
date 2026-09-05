@@ -136,6 +136,10 @@
   .agenda-row{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:13px;}
   .agenda-row:last-child{border-bottom:none;}
   .agenda-row.done{opacity:.5;text-decoration:line-through;}
+  .ag-allday-row{touch-action:none;cursor:pointer;}
+  .ag-allday-row.dragging{opacity:.5;}
+  .ag-tl-grid.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;}
+  #agendaAllDayZone.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;border-radius:14px;}
   .agenda-time{color:var(--sub);font-size:12px;width:36px;flex-shrink:0;}
   .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;flex-shrink:0;}
   .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -264,8 +268,10 @@
             </div>
 
             <div class="section-label" style="margin-top:10px;font-size:12px;">하루종일</div>
-            <div class="card" id="agendaAllDayList"></div>
-            <div id="agendaAllDayEmpty" class="empty" style="display:none;padding:8px 0;font-size:12px;">하루종일 항목이 없어요.</div>
+            <div id="agendaAllDayZone">
+              <div class="card" id="agendaAllDayList"></div>
+              <div id="agendaAllDayEmpty" class="empty" style="display:none;padding:8px 0;font-size:12px;">하루종일 항목이 없어요.</div>
+            </div>
 
             <div id="agendaTimeWrap" style="margin-top:12px;"></div>
           </div>
@@ -355,6 +361,7 @@
       <div><label>시작 날짜</label><input id="td_start" type="date" /></div>
       <div><label>종료 날짜(선택, 기간이면)</label><input id="td_end" type="date" /></div>
     </div>
+    <div class="field"><label>시간(선택)</label><input id="td_time" type="time" /></div>
     <div class="sheet-actions">
       <button class="btn-ghost" id="todoCancelBtn">취소</button>
       <button class="btn-primary" id="todoSaveBtn">저장</button>
@@ -530,25 +537,25 @@
   async function renderAgendaAllDay() {
     const dateStr = homeAgendaDate;
     $("agendaDateLabel").textContent = formatDate(dateStr);
-    const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+    const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr && !td.todo_time);
     const dayUntimedEvents = events.filter(e => e.event_date === dateStr && !e.event_time);
     const untimedHabits = tasks.filter(t => t.is_active && t.start_minute == null);
     const doneSet = untimedHabits.length ? await fetchLogsForDate(dateStr) : new Set();
 
     const rows = [
       ...dayUntimedEvents.map(e => `
-        <div class="agenda-row">
+        <div class="agenda-row ag-allday-row" data-id="${e.id}" data-kind="event">
           <span class="agenda-tag">일정</span>
           <span class="agenda-title">${escapeHtml(e.title)}</span>
         </div>`),
       ...untimedHabits.map(t => `
-        <div class="agenda-row ${doneSet.has(t.id) ? "done" : ""}">
+        <div class="agenda-row ag-allday-row ${doneSet.has(t.id) ? "done" : ""}" data-id="${t.id}" data-kind="habit">
           <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="ag-habit-check" />
           <span class="agenda-tag">습관</span>
           <span class="agenda-title">${escapeHtml(t.name)}</span>
         </div>`),
       ...dayTodos.map(td => `
-        <div class="agenda-row ${td.is_done ? "done" : ""}">
+        <div class="agenda-row ag-allday-row ${td.is_done ? "done" : ""}" data-id="${td.id}" data-kind="todo">
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="agenda-todo-check" />
           <span class="agenda-tag">할일</span>
           <span class="agenda-title">${escapeHtml(td.title)}</span>
@@ -568,9 +575,102 @@
       };
     });
     wireAgendaHabitChecks();
+    attachAgendaAllDayDrag();
   }
 
-  // 선택한 날짜의 "시간 있는" 항목만 모음: 습관(항상 매일 반복) + 시간 있는 일정. 할일은 시간이 없어 하루종일에만 나옴.
+  // 하루종일 ⇄ 시간 있는 뷰(타임블럭/타임라인) 간 드래그로 서로 이동.
+  // 하루종일 → 시간 있는 쪽: 놓은 위치의 블럭/시각으로 시간이 생김. 시간 있는 쪽 → 하루종일: 시간이 지워짐(끝은 attachAgendaBlockDrag/attachAgendaTimelineItemDrag 쪽에 있음).
+  function agendaTimeDropTarget(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const blockCard = el.closest(".ag-block-card[data-block-start]");
+    if (blockCard) return { type: "block", startMinute: parseInt(blockCard.dataset.blockStart, 10) };
+    const tlContent = el.closest(".ag-tl-content");
+    if (tlContent) {
+      const rect = tlContent.getBoundingClientRect();
+      const slot = Math.max(0, Math.floor((y - rect.top) / AG_TL_ROW_PX));
+      return { type: "timeline", startMinute: agendaTimelineMinM + slot * AG_TL_SLOT_MIN };
+    }
+    if (el.closest("#agendaAllDayZone")) return { type: "allday" };
+    return null;
+  }
+  let agendaTimelineMinM = 360; // renderAgendaTimeline이 매번 갱신(타임라인 뷰에서 드롭 위치→시각 계산용)
+
+  async function setAgendaItemTime(kind, id, startMinute) {
+    if (kind === "habit") {
+      const { error } = await sb.from("tok_habits").update({ start_minute: startMinute }).eq("id", id);
+      if (error) { alert("이동 실패: " + error.message); return; }
+    } else if (kind === "todo") {
+      const { error } = await sb.from("tok_todos").update({ todo_time: minutesToHHMM(startMinute) + ":00" }).eq("id", id);
+      if (error) { alert("이동 실패: " + error.message); return; }
+    } else {
+      const { error } = await sb.from("tok_events").update({ event_time: minutesToHHMM(startMinute) + ":00" }).eq("id", id);
+      if (error) { alert("이동 실패: " + error.message); return; }
+    }
+    await loadAll();
+  }
+  async function clearAgendaItemTime(kind, id) {
+    if (kind === "habit") {
+      const { error } = await sb.from("tok_habits").update({ start_minute: null }).eq("id", id);
+      if (error) { alert("이동 실패: " + error.message); return; }
+    } else if (kind === "todo") {
+      const { error } = await sb.from("tok_todos").update({ todo_time: null }).eq("id", id);
+      if (error) { alert("이동 실패: " + error.message); return; }
+    } else {
+      const { error } = await sb.from("tok_events").update({ event_time: null }).eq("id", id);
+      if (error) { alert("이동 실패: " + error.message); return; }
+    }
+    await loadAll();
+  }
+
+  function attachAgendaAllDayDrag() {
+    let dragEl = null, dragId = null, dragKindAttr = null, moved = false, startX = 0, startY = 0, curTarget = null;
+
+    document.querySelectorAll(".ag-allday-row[data-id]").forEach(row => {
+      row.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input")) return;
+        dragEl = row; dragId = row.dataset.id; dragKindAttr = row.dataset.kind; moved = false; curTarget = null;
+        startX = e.clientX; startY = e.clientY;
+        row.setPointerCapture?.(e.pointerId);
+      });
+      row.addEventListener("pointermove", (e) => {
+        if (!dragEl) return;
+        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+          moved = true;
+          dragEl.classList.add("dragging");
+        }
+        if (!moved) return;
+        const drop = agendaTimeDropTarget(e.clientX, e.clientY);
+        const under = drop && drop.type !== "allday" ? document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card, .ag-tl-grid") : null;
+        if (under !== curTarget) {
+          curTarget?.classList.remove("drop-target");
+          curTarget = under || null;
+          curTarget?.classList.add("drop-target");
+        }
+      });
+      const finish = async (e) => {
+        if (!dragEl) return;
+        const el = dragEl, id = dragId, kind = dragKindAttr, wasMoved = moved;
+        dragEl = null; dragId = null; dragKindAttr = null; moved = false;
+        el.classList.remove("dragging");
+        curTarget?.classList.remove("drop-target");
+        curTarget = null;
+        if (!wasMoved) return;
+        const drop = agendaTimeDropTarget(e.clientX, e.clientY);
+        if (!drop || drop.type === "allday") return; // 이미 하루종일이라 놓아도 변화 없음
+        await setAgendaItemTime(kind, id, drop.startMinute);
+      };
+      row.addEventListener("pointerup", finish);
+      row.addEventListener("pointercancel", () => {
+        dragEl?.classList.remove("dragging");
+        curTarget?.classList.remove("drop-target");
+        dragEl = null; dragId = null; dragKindAttr = null; moved = false; curTarget = null;
+      });
+    });
+  }
+
+  // 선택한 날짜의 "시간 있는" 항목만 모음: 습관(항상 매일 반복) + 시간 있는 일정 + 시간 지정된 할일.
+  // 시간 없는 할일은 하루종일에만 나옴.
   async function timedItemsForDate(dateStr) {
     const doneSet = await fetchLogsForDate(dateStr);
     const active = tasks.filter(t => t.is_active && t.start_minute != null);
@@ -584,7 +684,12 @@
       kind: "event", id: e.id, name: e.title,
       start_minute: hhmmToMinutes(e.event_time), duration_minutes: 30, done: false,
     }));
-    return [...habitItems, ...eventItems].sort((a, b) => a.start_minute - b.start_minute);
+    const dayTimedTodos = todos.filter(td => td.todo_time && td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+    const todoItems = dayTimedTodos.map(td => ({
+      kind: "todo", id: td.id, name: td.title,
+      start_minute: hhmmToMinutes(td.todo_time.slice(0, 5)), duration_minutes: 30, done: td.is_done,
+    }));
+    return [...habitItems, ...eventItems, ...todoItems].sort((a, b) => a.start_minute - b.start_minute);
   }
 
   async function renderAgendaTimed() {
@@ -598,6 +703,8 @@
     return `<div class="task-row ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${it.kind === "habit"
         ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
+        : it.kind === "todo"
+        ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
         : `<span class="agenda-tag">일정</span>`}
       <span style="color:var(--sub);font-size:12px;margin-right:6px;">${minutesToHHMM(it.start_minute)}</span>
       <span>${escapeHtml(it.name)}</span>
@@ -643,7 +750,7 @@
           dragEl.classList.add("dragging");
         }
         if (!moved) return;
-        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start]");
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], #agendaAllDayZone");
         if (under !== curTarget) {
           curTarget?.classList.remove("drop-target");
           curTarget = under || null;
@@ -657,15 +764,11 @@
         el.classList.remove("dragging");
         target?.classList.remove("drop-target");
         if (!wasMoved || !target) return;
-        const startMinute = parseInt(target.dataset.blockStart, 10);
-        if (kind === "habit") {
-          const { error } = await sb.from("tok_habits").update({ start_minute: startMinute }).eq("id", id);
-          if (error) { alert("이동 실패: " + error.message); return; }
+        if (target.id === "agendaAllDayZone") {
+          await clearAgendaItemTime(kind, id);
         } else {
-          const { error } = await sb.from("tok_events").update({ event_time: minutesToHHMM(startMinute) + ":00" }).eq("id", id);
-          if (error) { alert("이동 실패: " + error.message); return; }
+          await setAgendaItemTime(kind, id, parseInt(target.dataset.blockStart, 10));
         }
-        await loadAll();
       };
       row.addEventListener("pointerup", finish);
       row.addEventListener("pointercancel", () => {
@@ -683,6 +786,7 @@
       minM = Math.min(minM, it.start_minute);
       maxM = Math.max(maxM, it.start_minute + it.duration_minutes);
     });
+    agendaTimelineMinM = minM; // 하루종일→타임라인 드래그 드롭시 시각 계산에 씀
     const slotCount = Math.max(1, Math.ceil((maxM - minM) / AG_TL_SLOT_MIN));
     const rowOf = (m) => Math.floor((m - minM) / AG_TL_SLOT_MIN) + 1;
 
@@ -708,6 +812,8 @@
       itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" data-start="${it.start_minute}" data-duration="${it.duration_minutes}" style="top:${top}px;height:${height}px;left:${leftPct}%;width:calc(${widthPct}% - 4px);">
         ${it.kind === "habit"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
+          : it.kind === "todo"
+          ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
           : `<span class="agenda-tag">일정</span>`}
         <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
@@ -759,6 +865,7 @@
       let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null, isMouse = false;
       let longPressTimer = null;
       let pendingStart = origStart, pendingDuration = origDuration;
+      let overAllDay = false; // 이동 중 하루종일 쪽 위에 올라갔는지(놓으면 시간을 지움)
 
       const zoneAt = (clientY) => {
         if (!resizable) return null;
@@ -793,7 +900,7 @@
           const name = input.value.trim();
           if (!name || name === current) { renderAgendaTimed(); return; }
           done = true;
-          const table = kind === "habit" ? "tok_habits" : "tok_events";
+          const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
           const field = kind === "habit" ? "name" : "title";
           const { error } = await sb.from(table).update({ [field]: name }).eq("id", id);
           if (error) { alert("수정 실패: " + error.message); done = false; return; }
@@ -859,6 +966,15 @@
         }
         if (Math.abs(dy) > 6) moved = true;
         if (!moved) return;
+        if (dragKind === "move") {
+          const zone = document.elementFromPoint(e.clientX, e.clientY)?.closest("#agendaAllDayZone");
+          if (!!zone !== overAllDay) {
+            overAllDay = !!zone;
+            $("agendaAllDayZone").classList.toggle("drop-target", overAllDay);
+            task.style.visibility = overAllDay ? "hidden" : "";
+          }
+          if (overAllDay) return; // 하루종일 위에 있는 동안은 시간 위치 미리보기를 갱신하지 않음
+        }
         const deltaMin = Math.round(dy / AG_TL_ROW_PX) * AG_TL_SLOT_MIN;
         if (dragKind === "move") {
           let ns = origStart + deltaMin;
@@ -876,9 +992,11 @@
       const finish = async () => {
         clearTimer();
         pressed = false;
-        const k = dragKind;
-        dragKind = null;
+        const k = dragKind, wasOverAllDay = overAllDay;
+        dragKind = null; overAllDay = false;
         task.classList.remove("dragging");
+        task.style.visibility = "";
+        $("agendaAllDayZone")?.classList.remove("drop-target");
         clearHoverHint();
 
         if (k === null) {
@@ -886,11 +1004,20 @@
           return;
         }
         if (!moved) return;
+        if (wasOverAllDay) {
+          await clearAgendaItemTime(kind, id);
+          return;
+        }
         if (kind === "habit") {
           const { error } = await sb.from("tok_habits").update({
             start_minute: pendingStart, duration_minutes: pendingDuration,
           }).eq("id", id);
           if (error) { alert((k === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
+        } else if (kind === "todo") {
+          const { error } = await sb.from("tok_todos").update({
+            todo_time: minutesToHHMM(pendingStart) + ":00",
+          }).eq("id", id);
+          if (error) { alert("이동 실패: " + error.message); }
         } else {
           const { error } = await sb.from("tok_events").update({
             event_time: minutesToHHMM(pendingStart) + ":00",
@@ -900,7 +1027,12 @@
         await loadAll();
       };
       task.addEventListener("pointerup", finish);
-      task.addEventListener("pointercancel", () => { clearTimer(); pressed = false; dragKind = null; task.classList.remove("dragging"); clearHoverHint(); });
+      task.addEventListener("pointercancel", () => {
+        clearTimer(); pressed = false; dragKind = null; overAllDay = false;
+        task.classList.remove("dragging"); task.style.visibility = "";
+        $("agendaAllDayZone")?.classList.remove("drop-target");
+        clearHoverHint();
+      });
       task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
     });
   }
@@ -908,6 +1040,16 @@
   function wireAgendaHabitChecks() {
     document.querySelectorAll(".ag-habit-check").forEach(cb => {
       cb.onchange = () => toggleHabitForDate(cb.dataset.id, cb.checked, cb.dataset.date);
+    });
+    document.querySelectorAll(".ag-todo-check").forEach(cb => {
+      cb.onchange = async () => {
+        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        const t = todos.find(x => x.id === cb.dataset.id);
+        if (t) t.is_done = cb.checked;
+        renderAgendaTimed();
+        renderPlanUpcomingBoard();
+      };
     });
   }
 
@@ -962,7 +1104,7 @@
         const isRange = td.end_date && td.end_date !== td.start_date;
         return `<div class="plan-row todo" data-id="${td.id}">
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
-          <span class="plan-todo-title planup-todo-title">${escapeHtml(td.title)}</span>
+          <span class="plan-todo-title planup-todo-title">${td.todo_time ? td.todo_time.slice(0, 5) + " " : ""}${escapeHtml(td.title)}</span>
           ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
           <button class="planup-todo-edit" data-id="${td.id}">✎</button>
         </div>`;
@@ -1651,6 +1793,7 @@
     $("td_title").value = existing ? existing.title : "";
     $("td_start").value = existing ? existing.start_date : (prefill?.startDate || todayStr());
     $("td_end").value = existing ? (existing.end_date || "") : (prefill?.endDate || "");
+    $("td_time").value = existing ? (existing.todo_time ? existing.todo_time.slice(0, 5) : "") : (prefill?.time || "");
     $("todoSheetBg").dataset.editId = existing ? existing.id : "";
     $("todoDeleteRow").style.display = existing ? "flex" : "none";
     $("todoSheetBg").classList.add("open");
@@ -1661,14 +1804,15 @@
     const title = $("td_title").value.trim();
     const start_date = $("td_start").value;
     const end_date = $("td_end").value || null;
+    const todo_time = $("td_time").value ? $("td_time").value + ":00" : null;
     if (!title || !start_date) { alert("제목과 시작 날짜는 꼭 입력해주세요."); return; }
     if (end_date && end_date < start_date) { alert("종료 날짜는 시작 날짜보다 빠를 수 없어요."); return; }
     const editId = $("todoSheetBg").dataset.editId;
     let error;
     if (editId) {
-      ({ error } = await sb.from("tok_todos").update({ title, start_date, end_date }).eq("id", editId));
+      ({ error } = await sb.from("tok_todos").update({ title, start_date, end_date, todo_time }).eq("id", editId));
     } else {
-      ({ error } = await sb.from("tok_todos").insert({ title, start_date, end_date }));
+      ({ error } = await sb.from("tok_todos").insert({ title, start_date, end_date, todo_time }));
     }
     if (error) { alert("저장 실패: " + error.message); return; }
     $("todoSheetBg").classList.remove("open");
