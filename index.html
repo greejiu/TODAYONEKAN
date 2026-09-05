@@ -142,7 +142,9 @@
 
   /* ── 집 : 오늘 열의 타임블럭/타임라인(습관+일정 통합, 드래그로 이동/조절 가능) ── */
   .ag-tl-grid{display:grid;grid-template-columns:34px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;}
-  .ag-tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;position:relative;overflow:hidden;z-index:1;touch-action:none;cursor:pointer;}
+  /* 같은 시간대에 겹치는 항목을 나란히 배치하려고 grid-row 대신 이 안에서 절대좌표(top/left/width)로 배치함 */
+  .ag-tl-content{grid-column:2;grid-row:1 / -1;position:relative;}
+  .ag-tl-task{display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;padding:0 6px;font-size:12px;position:absolute;box-sizing:border-box;overflow:hidden;z-index:1;touch-action:none;cursor:pointer;}
   .ag-tl-task.done{opacity:.55;text-decoration:line-through;}
   .ag-tl-task.event{background:#fff;border-style:dashed;}
   .ag-tl-task.dragging{opacity:.85;box-shadow:0 3px 10px rgba(60,50,100,.18);z-index:5;cursor:grabbing;}
@@ -692,19 +694,53 @@
         if (m % 60 === 0) rowsHtml += `<div class="tl-row-label" style="grid-row:${i+1}">${minutesToHHMM(m)}</div>`;
       }
     }
+    // 같은 시간대에 겹치는 항목은 나란히 배치(2개 겹치면 2열, 3개면 3열 …) — 겹치는 묶음(cluster) 단위로
+    // 그 묶음 안 최대 동시 개수만큼 열을 나눔(캘린더 앱들이 흔히 쓰는 구간 색칠 방식).
+    const placements = agendaTimelineLayout(items);
+
     let itemsHtml = "";
-    items.forEach(it => {
+    placements.forEach(({ item: it, col, colCount }) => {
       const sRow = rowOf(it.start_minute), eRow = Math.max(sRow + 1, rowOf(it.start_minute + it.duration_minutes));
-      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" data-start="${it.start_minute}" data-duration="${it.duration_minutes}" style="grid-row:${sRow} / ${eRow}">
+      const top = (sRow - 1) * AG_TL_ROW_PX;
+      const height = (eRow - sRow) * AG_TL_ROW_PX;
+      const widthPct = 100 / colCount;
+      const leftPct = widthPct * col;
+      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" data-start="${it.start_minute}" data-duration="${it.duration_minutes}" style="top:${top}px;height:${height}px;left:${leftPct}%;width:calc(${widthPct}% - 4px);">
         ${it.kind === "habit"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
           : `<span class="agenda-tag">일정</span>`}
         <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
     });
-    $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}${itemsHtml}</div>`;
+    $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}<div class="ag-tl-content">${itemsHtml}</div></div>`;
     wireAgendaHabitChecks();
     attachAgendaTimelineItemDrag(minM);
+  }
+
+  // 시간이 겹치는 항목끼리 열(column)을 나눠 배정. 겹치는 구간(cluster) 안에서 동시에 떠있던
+  // 최대 개수를 그 구간 전체의 열 개수로 통일해, 나중에 겹침이 풀려도 폭이 들쭉날쭉하지 않게 함.
+  function agendaTimelineLayout(items) {
+    const sorted = [...items].sort((a, b) => a.start_minute - b.start_minute);
+    const placements = [];
+    let active = []; // { col, end }
+    let cluster = [];
+    let clusterCols = 0;
+    const flushCluster = () => { cluster.forEach(p => { p.colCount = clusterCols; }); cluster = []; clusterCols = 0; };
+    sorted.forEach(it => {
+      const start = it.start_minute, end = it.start_minute + it.duration_minutes;
+      active = active.filter(a => a.end > start);
+      if (!active.length && cluster.length) flushCluster();
+      const used = new Set(active.map(a => a.col));
+      let col = 0;
+      while (used.has(col)) col++;
+      active.push({ col, end });
+      clusterCols = Math.max(clusterCols, active.length);
+      const p = { item: it, col, colCount: 1 };
+      cluster.push(p);
+      placements.push(p);
+    });
+    if (cluster.length) flushCluster();
+    return placements;
   }
 
   // 오늘 열 타임라인의 습관·일정 항목 드래그(습관탭 attachTimelineItemDrag와 동일 UX, 습관+일정 공용으로 일반화):
@@ -733,8 +769,10 @@
         return null;
       };
       const applyPreview = () => {
+        // 항목이 이제 grid-row가 아니라 절대좌표(top/height)로 배치되므로(겹침 다열 배치 지원) px로 계산
         const sRow = rowOf(pendingStart), eRow = Math.max(sRow + 1, rowOf(pendingStart + pendingDuration));
-        task.style.gridRow = `${sRow} / ${eRow}`;
+        task.style.top = `${(sRow - 1) * AG_TL_ROW_PX}px`;
+        task.style.height = `${(eRow - sRow) * AG_TL_ROW_PX}px`;
       };
       const clearTimer = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
       const clearHoverHint = () => { task.classList.remove("edge-hover-top", "edge-hover-bottom"); task.style.cursor = ""; };
