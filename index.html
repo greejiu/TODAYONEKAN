@@ -726,17 +726,16 @@
         isMouse = e.pointerType === "mouse";
         task.setPointerCapture?.(e.pointerId);
 
-        if (!isMouse) {
-          // 터치/펜은 스크롤 제스처와 구분해야 해서 0.3초 대기 후 이동으로 전환
-          longPressTimer = setTimeout(() => {
-            longPressTimer = null;
-            if (cancelled) return;
-            dragKind = "move";
-            task.classList.add("dragging");
-            clearHoverHint();
-          }, TL_LONG_PRESS_MS);
-        }
-        // 마우스는 대기 없이 pointermove에서 살짝만 움직이면 바로 이동/조절 시작(아래)
+        // 0.3초 눌러 대기하면(짧은 항목이라 끝부분에서 눌렀어도) 무조건 이동으로 전환.
+        // 마우스는 대기 전에 살짝만 움직여도 아래 pointermove에서 바로 판정(끝부분=조절, 몸통=이동)되므로
+        // 이 타이머는 "짧은 항목이라 끝부분밖에 못 눌렀는데 이동시키고 싶을 때"의 보완 수단으로 항상 켜둠.
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          if (cancelled) return;
+          dragKind = "move";
+          task.classList.add("dragging");
+          clearHoverHint();
+        }, TL_LONG_PRESS_MS);
       });
       task.addEventListener("pointermove", (e) => {
         if (!pressed) {
