@@ -77,10 +77,14 @@
   .tl-grid{display:grid;grid-template-columns:44px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;touch-action:none;}
   .tl-row-label{grid-column:1;font-size:10px;color:var(--sub);text-align:right;padding-right:6px;transform:translateY(-6px);pointer-events:none;}
   .tl-row-line{grid-column:2;border-top:1px solid var(--line);pointer-events:none;}
-  .tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;position:relative;overflow:hidden;z-index:1;}
+  .tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;position:relative;overflow:hidden;z-index:1;touch-action:none;cursor:grab;}
   .tl-task input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .tl-task span{font-size:12px;}
   .tl-task.done span{color:var(--sub);text-decoration:line-through;}
+  .tl-handle{position:absolute;left:0;right:0;height:7px;cursor:ns-resize;z-index:2;}
+  .tl-handle-top{top:0;}
+  .tl-handle-bottom{bottom:0;}
+  .tl-handle::after{content:"";display:block;margin:2px auto 0;width:22px;height:3px;border-radius:2px;background:var(--accent);opacity:.45;}
   .tl-add-preview{grid-column:2;background:rgba(154,140,240,.18);border:2px dashed var(--accent);border-radius:8px;margin:0 4px;pointer-events:none;}
   .tl-unassigned{margin-top:10px;}
   .tl-unassigned .section-label{margin:0 2px 8px;}
@@ -544,17 +548,85 @@
 
     let tasksHtml = "";
     timed.forEach(t => {
+      const duration = t.duration_minutes || 30;
       const tStartRow = rowOf(t.start_minute);
-      const tEndRow = Math.max(tStartRow + 1, rowOf(t.start_minute + (t.duration_minutes || 30)));
+      const tEndRow = Math.max(tStartRow + 1, rowOf(t.start_minute + duration));
       const done = logsToday.has(t.id);
-      tasksHtml += `<div class="tl-task ${done?'done':''}" data-id="${t.id}" style="grid-row:${tStartRow} / ${tEndRow}">
+      tasksHtml += `<div class="tl-task ${done?'done':''}" data-id="${t.id}" data-start="${t.start_minute}" data-duration="${duration}" style="grid-row:${tStartRow} / ${tEndRow}">
+        <div class="tl-handle tl-handle-top"></div>
         <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
         <span>${escapeHtml(t.name)}</span>
+        <div class="tl-handle tl-handle-bottom"></div>
       </div>`;
     });
 
     $("timelineWrap").innerHTML = `<div class="tl-grid" id="tlGrid" style="grid-template-rows:repeat(${slotCount},${TL_ROW_PX}px)">${rowsHtml}${tasksHtml}</div>${untimedListHtml(untimed, "시간 없음")}`;
     attachTimelineAddDrag(minM, slotCount);
+    attachTimelineItemDrag(minM);
+  }
+
+  // 기존 습관 항목 몸통을 드래그하면 시간 이동, 위·아래 손잡이를 드래그하면 시작/종료(소요시간) 조절.
+  // 6px(=대략 이동 유무 판정)보다 적게 움직였으면 그냥 클릭으로 보고 아무 것도 안 함(체크박스는 별도 처리).
+  function attachTimelineItemDrag(minM) {
+    const rowOf = (m) => Math.floor((m - minM) / TL_SLOT_MIN) + 1;
+
+    document.querySelectorAll(".tl-task").forEach(task => {
+      const id = task.dataset.id;
+      if (!id) return; // 인라인 추가 중인 임시 요소는 건너뜀
+      const origStart = parseInt(task.dataset.start, 10);
+      const origDuration = parseInt(task.dataset.duration, 10);
+
+      let dragKind = null; // "move" | "resize-top" | "resize-bottom"
+      let startY = 0, moved = false;
+      let pendingStart = origStart, pendingDuration = origDuration;
+
+      const applyPreview = () => {
+        const sRow = rowOf(pendingStart), eRow = Math.max(sRow + 1, rowOf(pendingStart + pendingDuration));
+        task.style.gridRow = `${sRow} / ${eRow}`;
+      };
+
+      task.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input")) return;
+        const onTop = e.target.closest(".tl-handle-top");
+        const onBottom = e.target.closest(".tl-handle-bottom");
+        dragKind = onTop ? "resize-top" : onBottom ? "resize-bottom" : "move";
+        startY = e.clientY; moved = false;
+        pendingStart = origStart; pendingDuration = origDuration;
+        task.setPointerCapture?.(e.pointerId);
+      });
+      task.addEventListener("pointermove", (e) => {
+        if (!dragKind) return;
+        const dy = e.clientY - startY;
+        if (Math.abs(dy) > 6) moved = true;
+        if (!moved) return;
+        const deltaMin = Math.round(dy / TL_ROW_PX) * TL_SLOT_MIN;
+        if (dragKind === "move") {
+          let ns = origStart + deltaMin;
+          ns = Math.max(0, Math.min(1440 - origDuration, ns));
+          pendingStart = ns; pendingDuration = origDuration;
+        } else if (dragKind === "resize-top") {
+          let ns = Math.max(0, Math.min(origStart + origDuration - TL_SLOT_MIN, origStart + deltaMin));
+          pendingStart = ns; pendingDuration = (origStart + origDuration) - ns;
+        } else {
+          let nd = Math.max(TL_SLOT_MIN, Math.min(1440 - origStart, origDuration + deltaMin));
+          pendingStart = origStart; pendingDuration = nd;
+        }
+        applyPreview();
+      });
+      const finish = async () => {
+        if (!dragKind) return;
+        const kind = dragKind;
+        dragKind = null;
+        if (!moved) return; // 이동 없이 그냥 클릭한 거면 아무 것도 안 함
+        const { error } = await sb.from("tok_habits").update({
+          start_minute: pendingStart, duration_minutes: pendingDuration,
+        }).eq("id", id);
+        if (error) { alert((kind === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
+        await loadAll();
+      };
+      task.addEventListener("pointerup", finish);
+      task.addEventListener("pointercancel", () => { dragKind = null; });
+    });
   }
 
   // 타임라인 빈 곳을 클릭하거나 드래그하면 그 시각(또는 드래그한 범위)에 바로 습관 추가 시트가 열림
