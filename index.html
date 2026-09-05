@@ -140,6 +140,20 @@
   .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;flex-shrink:0;}
   .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
+  /* ── 집 : 오늘 열의 타임블럭/타임라인(습관+일정 통합, 보기전용) ── */
+  .ag-tl-grid{display:grid;grid-template-columns:34px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;}
+  .ag-tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;overflow:hidden;}
+  .ag-tl-task.done{opacity:.55;text-decoration:line-through;}
+  .ag-tl-task.event{background:#fff;border-style:dashed;}
+
+  /* ── 집 : 다가오는 계획 (7일 보드, 습관 탭의 #planBoard와는 별도 인스턴스) ── */
+  .planup-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
+  .planup-day:last-child{border-bottom:none;}
+  .planup-day.drag-hi{background:var(--accent-soft);border-radius:8px;}
+  .planup-day-label{font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px;}
+  .planup-day-body{display:flex;flex-direction:column;gap:4px;}
+  .planup-day-empty{font-size:12px;color:var(--sub);opacity:.5;padding:4px 0;}
+
   /* ── 집 : 다가오는 계획 (7일 보드) ── */
   .plan-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
   .plan-day:last-child{border-bottom:none;}
@@ -227,25 +241,28 @@
           <div class="progress-bar"><div class="progress-fill" id="homeProgressFill" style="width:0%"></div></div>
         </div>
 
-        <div class="section-label">📅 다가오는 일정</div>
-        <div class="card" id="upcomingCard"></div>
-        <div id="upcomingEmpty" class="empty" style="display:none;padding:16px 0;">다가오는 일정이 없어요.</div>
-
         <div class="home-grid3">
           <div class="home-col">
             <div class="section-label agenda-head">
               <button id="agendaPrevBtn" class="agenda-nav">◀</button>
-              <span id="agendaDateLabel">오늘</span>
+              <span id="agendaDateLabel" style="cursor:pointer;">오늘</span>
               <button id="agendaNextBtn" class="agenda-nav">▶</button>
             </div>
-            <div class="card" id="homeAgendaList"></div>
-            <div id="homeAgendaEmpty" class="empty" style="display:none;">이 날 일정·할일이 없어요.</div>
+
+            <div class="section-label" style="margin-top:10px;font-size:12px;">하루종일</div>
+            <div class="card" id="agendaAllDayList"></div>
+            <div id="agendaAllDayEmpty" class="empty" style="display:none;padding:8px 0;font-size:12px;">하루종일 항목이 없어요.</div>
+
+            <div class="view-toggle" style="margin-top:12px;">
+              <button id="agendaViewBlockBtn" class="active">타임블럭</button>
+              <button id="agendaViewTimelineBtn">타임라인</button>
+            </div>
+            <div id="agendaTimeWrap"></div>
           </div>
 
           <div class="home-col">
             <div class="section-label">🗓 다가오는 계획</div>
-            <div class="card" id="planSummaryList"></div>
-            <div id="planSummaryEmpty" class="empty" style="display:none;">예정된 할일이 없어요.</div>
+            <div class="card" id="planUpcomingBoard"></div>
           </div>
 
           <div class="home-col">
@@ -438,28 +455,12 @@
     $("homeProgressFill").style.width = active.length ? `${Math.round(doneCount/active.length*100)}%` : "0%";
   }
 
-  // ── 집 : 다가오는 일정 ──
-  function renderUpcoming() {
-    const today = todayStr();
-    const upcoming = events.filter(e => e.event_date >= today).slice(0, 5);
-    $("upcomingEmpty").style.display = upcoming.length ? "none" : "block";
-    $("upcomingCard").style.display = upcoming.length ? "block" : "none";
-    $("upcomingCard").innerHTML = upcoming.map(e => `
-      <div class="upcoming-row">
-        <span class="d">${formatDateShort(e.event_date)}</span>
-        <span class="t">${e.event_time ? e.event_time.slice(0,5) : ""}</span>
-        <span class="ti">${escapeHtml(e.title)}</span>
-      </div>
-    `).join("");
-  }
-
-  // ── 집 : 오늘 한눈에 보기(2026-09-05 3열 개편) ──
-  // 습관 실행뷰(타임블럭/타임라인)는 '습관' 탭으로 이동함. 여기는 요약만 보여줌.
+  // ── 집 : 오늘 한눈에 보기(2026-09-05 재개편 — 다가오는 일정 카드 제거, 오늘 열에 습관도 통합) ──
   function renderHome() {
     renderProgress();
-    renderUpcoming();
-    renderHomeAgenda();
-    renderPlanSummary();
+    renderAgendaAllDay();
+    renderAgendaTimed();
+    renderPlanUpcomingBoard();
     renderSomedaySummary();
   }
 
@@ -468,22 +469,62 @@
     dt.setDate(dt.getDate() + delta);
     return dt.toISOString().slice(0, 10);
   }
+  function hhmmToMinutes(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + (m || 0);
+  }
 
   let homeAgendaDate = todayStr();
+  let agendaView = "block"; // "block" | "timeline" — 오늘 열 전용(습관탭의 homeView와는 별개 상태)
 
-  // "오늘" 열: 날짜를 앞뒤로 넘기면서 그 날짜의 일정 + 그 날짜에 걸쳐있는 할일을 함께 봄(습관 없음)
-  function renderHomeAgenda() {
-    $("agendaDateLabel").textContent = formatDate(homeAgendaDate);
-    const dayEvents = events.filter(e => e.event_date === homeAgendaDate)
-      .sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
-    const dayTodos = todos.filter(td => td.start_date <= homeAgendaDate && (td.end_date || td.start_date) >= homeAgendaDate);
+  // 습관은 매일 반복이라 날짜별 완료 여부만 다름. 오늘이면 이미 있는 logsToday를 그대로 씀.
+  async function fetchLogsForDate(dateStr) {
+    if (dateStr === todayStr()) return new Set(logsToday);
+    const { data, error } = await sb.from("tok_habit_logs").select("habit_id").eq("done_date", dateStr);
+    if (error) return new Set();
+    return new Set((data || []).map(r => r.habit_id));
+  }
+
+  // 습관 체크를 "오늘"이 아닌 다른 날짜(과거·미래)에도 할 수 있게 일반화한 버전.
+  async function toggleHabitForDate(taskId, checked, dateStr) {
+    if (checked) {
+      const { error } = await sb.from("tok_habit_logs").insert({ habit_id: taskId, done_date: dateStr });
+      if (error) { alert("체크 실패: " + error.message); return; }
+    } else {
+      const { error } = await sb.from("tok_habit_logs").delete().eq("habit_id", taskId).eq("done_date", dateStr);
+      if (error) { alert("체크 해제 실패: " + error.message); return; }
+    }
+    if (dateStr === todayStr()) {
+      if (checked) logsToday.add(taskId); else logsToday.delete(taskId);
+      renderTodo();
+    }
+    if (homeAgendaDate === dateStr) await renderAgendaTimed();
+    await renderPlanUpcomingBoard();
+  }
+  async function toggleToday(taskId, checked) {
+    await toggleHabitForDate(taskId, checked, todayStr());
+  }
+
+  // "하루종일": 그 날짜에 걸친 할일(시간 없음) + 시간 없는 일정 + 시간 없는 습관
+  async function renderAgendaAllDay() {
+    const dateStr = homeAgendaDate;
+    $("agendaDateLabel").textContent = formatDate(dateStr);
+    const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+    const dayUntimedEvents = events.filter(e => e.event_date === dateStr && !e.event_time);
+    const untimedHabits = tasks.filter(t => t.is_active && t.start_minute == null);
+    const doneSet = untimedHabits.length ? await fetchLogsForDate(dateStr) : new Set();
 
     const rows = [
-      ...dayEvents.map(e => `
+      ...dayUntimedEvents.map(e => `
         <div class="agenda-row">
-          <span class="agenda-time">${e.event_time ? e.event_time.slice(0, 5) : ""}</span>
           <span class="agenda-tag">일정</span>
           <span class="agenda-title">${escapeHtml(e.title)}</span>
+        </div>`),
+      ...untimedHabits.map(t => `
+        <div class="agenda-row ${doneSet.has(t.id) ? "done" : ""}">
+          <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="ag-habit-check" />
+          <span class="agenda-tag">습관</span>
+          <span class="agenda-title">${escapeHtml(t.name)}</span>
         </div>`),
       ...dayTodos.map(td => `
         <div class="agenda-row ${td.is_done ? "done" : ""}">
@@ -492,8 +533,8 @@
           <span class="agenda-title">${escapeHtml(td.title)}</span>
         </div>`),
     ];
-    $("homeAgendaList").innerHTML = rows.join("");
-    $("homeAgendaEmpty").style.display = rows.length ? "none" : "block";
+    $("agendaAllDayList").innerHTML = rows.join("");
+    $("agendaAllDayEmpty").style.display = rows.length ? "none" : "block";
 
     document.querySelectorAll(".agenda-todo-check").forEach(cb => {
       cb.onchange = async () => {
@@ -501,34 +542,251 @@
         if (error) { alert("변경 실패: " + error.message); return; }
         const t = todos.find(x => x.id === cb.dataset.id);
         if (t) t.is_done = cb.checked;
-        renderHomeAgenda();
-        renderPlanSummary();
+        renderAgendaAllDay();
+        renderPlanUpcomingBoard();
       };
     });
+    wireAgendaHabitChecks();
   }
-  $("agendaPrevBtn").onclick = () => { homeAgendaDate = addDaysStr(homeAgendaDate, -1); renderHomeAgenda(); };
-  $("agendaNextBtn").onclick = () => { homeAgendaDate = addDaysStr(homeAgendaDate, 1); renderHomeAgenda(); };
 
-  // "다가오는 계획" 열: 미완료 할일 요약(최대 8개). 자세한 편집은 '할일' 탭에서.
-  function renderPlanSummary() {
-    const today = todayStr();
-    const upcoming = todos.filter(td => !td.is_done && (td.end_date || td.start_date) >= today)
-      .sort((a, b) => a.start_date.localeCompare(b.start_date))
-      .slice(0, 8);
-    $("planSummaryList").innerHTML = upcoming.map(td => `
-      <div class="task-row">
-        <input type="checkbox" data-id="${td.id}" class="plansum-check" />
-        <span style="color:var(--sub);font-size:12px;margin-right:6px;">${formatDateShort(td.start_date)}</span>
-        <span>${escapeHtml(td.title)}</span>
-      </div>`).join("");
-    $("planSummaryEmpty").style.display = upcoming.length ? "none" : "block";
-    document.querySelectorAll(".plansum-check").forEach(cb => {
+  // 선택한 날짜의 "시간 있는" 항목만 모음: 습관(항상 매일 반복) + 시간 있는 일정. 할일은 시간이 없어 하루종일에만 나옴.
+  async function timedItemsForDate(dateStr) {
+    const doneSet = await fetchLogsForDate(dateStr);
+    const active = tasks.filter(t => t.is_active && t.start_minute != null);
+    const habitItems = active.map(t => ({
+      kind: "habit", id: t.id, name: t.name,
+      start_minute: t.start_minute, duration_minutes: t.duration_minutes || 30,
+      done: doneSet.has(t.id),
+    }));
+    const dayEvents = events.filter(e => e.event_date === dateStr && e.event_time);
+    const eventItems = dayEvents.map(e => ({
+      kind: "event", id: e.id, name: e.title,
+      start_minute: hhmmToMinutes(e.event_time), duration_minutes: 30, done: false,
+    }));
+    return [...habitItems, ...eventItems].sort((a, b) => a.start_minute - b.start_minute);
+  }
+
+  async function renderAgendaTimed() {
+    const items = await timedItemsForDate(homeAgendaDate);
+    if (agendaView === "timeline") renderAgendaTimeline(items);
+    else renderAgendaBlocks(items);
+  }
+
+  // 오늘 열의 타임블럭/타임라인은 보기+체크 전용(드래그 이동·조절은 습관 탭에서). 일정은 표시만.
+  function agendaItemRowHtml(it) {
+    return `<div class="task-row ${it.done ? "done" : ""}">
+      ${it.kind === "habit"
+        ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
+        : `<span class="agenda-tag">일정</span>`}
+      <span style="color:var(--sub);font-size:12px;margin-right:6px;">${minutesToHHMM(it.start_minute)}</span>
+      <span>${escapeHtml(it.name)}</span>
+    </div>`;
+  }
+
+  function renderAgendaBlocks(items) {
+    let html = "";
+    if (timeBlocks.length) {
+      const covered = new Set();
+      timeBlocks.forEach(block => {
+        const inBlock = items.filter(it => it.start_minute >= block.start_minute && it.start_minute < block.end_minute);
+        inBlock.forEach(it => covered.add(it));
+        html += `<div class="section-label" style="margin:14px 2px 8px;">${escapeHtml(block.title)}</div>`;
+        html += `<div class="card">${inBlock.map(agendaItemRowHtml).join("")}</div>`;
+      });
+      const uncovered = items.filter(it => !covered.has(it));
+      if (uncovered.length) html += `<div class="card">${uncovered.map(agendaItemRowHtml).join("")}</div>`;
+    } else if (items.length) {
+      html += `<div class="card">${items.map(agendaItemRowHtml).join("")}</div>`;
+    }
+    $("agendaTimeWrap").innerHTML = html || `<div class="empty" style="padding:20px 0;font-size:12px;">시간이 있는 항목이 없어요.</div>`;
+    wireAgendaHabitChecks();
+  }
+
+  const AG_TL_SLOT_MIN = 15, AG_TL_ROW_PX = 13;
+  function renderAgendaTimeline(items) {
+    let minM = 360, maxM = 1440;
+    items.forEach(it => {
+      minM = Math.min(minM, it.start_minute);
+      maxM = Math.max(maxM, it.start_minute + it.duration_minutes);
+    });
+    const slotCount = Math.max(1, Math.ceil((maxM - minM) / AG_TL_SLOT_MIN));
+    const rowOf = (m) => Math.floor((m - minM) / AG_TL_SLOT_MIN) + 1;
+
+    let rowsHtml = "";
+    for (let i = 0; i < slotCount; i++) {
+      const m = minM + i * AG_TL_SLOT_MIN;
+      if (m % 30 === 0) {
+        rowsHtml += `<div class="tl-row-line" style="grid-row:${i+1}"></div>`;
+        if (m % 60 === 0) rowsHtml += `<div class="tl-row-label" style="grid-row:${i+1}">${minutesToHHMM(m)}</div>`;
+      }
+    }
+    let itemsHtml = "";
+    items.forEach(it => {
+      const sRow = rowOf(it.start_minute), eRow = Math.max(sRow + 1, rowOf(it.start_minute + it.duration_minutes));
+      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" style="grid-row:${sRow} / ${eRow}">
+        ${it.kind === "habit"
+          ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
+          : `<span class="agenda-tag">일정</span>`}
+        <span>${escapeHtml(it.name)}</span>
+      </div>`;
+    });
+    $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}${itemsHtml}</div>`;
+    wireAgendaHabitChecks();
+  }
+
+  function wireAgendaHabitChecks() {
+    document.querySelectorAll(".ag-habit-check").forEach(cb => {
+      cb.onchange = () => toggleHabitForDate(cb.dataset.id, cb.checked, cb.dataset.date);
+    });
+  }
+
+  $("agendaPrevBtn").onclick = () => { homeAgendaDate = addDaysStr(homeAgendaDate, -1); renderAgendaAllDay(); renderAgendaTimed(); };
+  $("agendaNextBtn").onclick = () => { homeAgendaDate = addDaysStr(homeAgendaDate, 1); renderAgendaAllDay(); renderAgendaTimed(); };
+  $("agendaDateLabel").onclick = () => {
+    if (homeAgendaDate === todayStr()) return;
+    homeAgendaDate = todayStr();
+    renderAgendaAllDay(); renderAgendaTimed();
+  };
+  $("agendaViewBlockBtn").onclick = () => {
+    agendaView = "block";
+    $("agendaViewBlockBtn").classList.add("active");
+    $("agendaViewTimelineBtn").classList.remove("active");
+    renderAgendaTimed();
+  };
+  $("agendaViewTimelineBtn").onclick = () => {
+    agendaView = "timeline";
+    $("agendaViewTimelineBtn").classList.add("active");
+    $("agendaViewBlockBtn").classList.remove("active");
+    renderAgendaTimed();
+  };
+
+  // "다가오는 계획" 열: 내일부터 7일, 일정+할일+습관을 모두 보여줌.
+  // 빈 날짜도 칸이 남아있어 드래그로 그 날짜에 할일을 추가할 수 있음(습관·일정은 표시만 — 드래그 이동은 다음 단계).
+  async function renderPlanUpcomingBoard() {
+    const days = [];
+    for (let i = 1; i <= 7; i++) days.push(addDaysStr(todayStr(), i));
+
+    const { data: logData } = await sb.from("tok_habit_logs").select("habit_id, done_date").in("done_date", days);
+    const logsByDate = {};
+    days.forEach(d => { logsByDate[d] = new Set(); });
+    (logData || []).forEach(r => { if (logsByDate[r.done_date]) logsByDate[r.done_date].add(r.habit_id); });
+
+    const active = tasks.filter(t => t.is_active);
+
+    $("planUpcomingBoard").innerHTML = days.map((dateStr, idx) => {
+      const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+      const dayEvents = events.filter(e => e.event_date === dateStr).sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
+      const doneSet = logsByDate[dateStr];
+
+      const habitHtml = active.map(t => `
+        <div class="plan-row habit ${doneSet.has(t.id) ? "done" : ""}">
+          <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="planup-habit-check" />
+          <span class="plan-todo-title">${escapeHtml(t.name)}</span>
+        </div>`).join("");
+      const eventHtml = dayEvents.map(e => `
+        <div class="plan-row">
+          <span class="plan-todo-title">📅 ${e.event_time ? e.event_time.slice(0, 5) + " " : ""}${escapeHtml(e.title)}</span>
+        </div>`).join("");
+      const todoHtml = dayTodos.map(td => {
+        const isRange = td.end_date && td.end_date !== td.start_date;
+        return `<div class="plan-row todo" data-id="${td.id}">
+          <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
+          <span class="plan-todo-title planup-todo-title">${escapeHtml(td.title)}</span>
+          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
+          <button class="planup-todo-edit" data-id="${td.id}">✎</button>
+        </div>`;
+      }).join("");
+      const bodyHtml = habitHtml + eventHtml + todoHtml;
+      return `<div class="planup-day" data-idx="${idx}" data-date="${dateStr}">
+        <div class="planup-day-label">${formatDateShort(dateStr)}</div>
+        <div class="planup-day-body">${bodyHtml || '<div class="planup-day-empty">+ 추가</div>'}</div>
+      </div>`;
+    }).join("");
+
+    document.querySelectorAll(".planup-habit-check").forEach(cb => {
+      cb.onchange = () => toggleHabitForDate(cb.dataset.id, cb.checked, cb.dataset.date);
+    });
+    document.querySelectorAll(".planup-todo-check").forEach(cb => {
       cb.onchange = async () => {
         const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
         if (error) { alert("변경 실패: " + error.message); return; }
-        await loadAll();
+        const t = todos.find(x => x.id === cb.dataset.id);
+        if (t) t.is_done = cb.checked;
+        renderPlanUpcomingBoard();
       };
     });
+    document.querySelectorAll(".planup-todo-edit").forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); openTodoSheet(todos.find(t => t.id === btn.dataset.id)); };
+    });
+    document.querySelectorAll("#planUpcomingBoard .plan-row.todo .planup-todo-title").forEach(titleEl => {
+      titleEl.onclick = (e) => {
+        e.stopPropagation();
+        const id = titleEl.closest(".plan-row").dataset.id;
+        openTodoSheet(todos.find(t => t.id === id));
+      };
+    });
+    document.querySelectorAll("#planUpcomingBoard .plan-row.todo").forEach(row => {
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showDeleteMenu(e.clientX, e.clientY, async () => {
+          if (!confirm("이 할일을 삭제할까요?")) return;
+          const { error } = await sb.from("tok_todos").delete().eq("id", row.dataset.id);
+          if (error) { alert("삭제 실패: " + error.message); return; }
+          await loadAll();
+        });
+      };
+    });
+
+    attachPlanUpcomingDrag(days);
+  }
+
+  let planUpcomingAddState = null;
+  function attachPlanUpcomingDrag(days) {
+    const board = $("planUpcomingBoard");
+    if (!board) return;
+
+    const idxFromPoint = (x, y) => {
+      const el = document.elementFromPoint(x, y)?.closest(".planup-day");
+      return el ? parseInt(el.dataset.idx, 10) : null;
+    };
+    const highlight = (a, b) => {
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      board.querySelectorAll(".planup-day").forEach(el => {
+        const idx = parseInt(el.dataset.idx, 10);
+        el.classList.toggle("drag-hi", idx >= lo && idx <= hi);
+      });
+    };
+    const clearHighlight = () => board.querySelectorAll(".planup-day").forEach(el => el.classList.remove("drag-hi"));
+
+    board.onpointerdown = (e) => {
+      if (e.target.closest(".planup-todo-check") || e.target.closest(".planup-todo-edit") || e.target.closest(".planup-todo-title") || e.target.closest(".planup-habit-check")) return;
+      const dayEl = e.target.closest(".planup-day");
+      if (!dayEl) return;
+      const startIdx = parseInt(dayEl.dataset.idx, 10);
+      planUpcomingAddState = { startIdx, currentIdx: startIdx, moved: false };
+      board.setPointerCapture?.(e.pointerId);
+      highlight(startIdx, startIdx);
+    };
+    board.onpointermove = (e) => {
+      if (!planUpcomingAddState) return;
+      const idx = idxFromPoint(e.clientX, e.clientY);
+      if (idx == null) return;
+      if (idx !== planUpcomingAddState.startIdx) planUpcomingAddState.moved = true;
+      planUpcomingAddState.currentIdx = idx;
+      highlight(planUpcomingAddState.startIdx, idx);
+    };
+    const finish = () => {
+      if (!planUpcomingAddState) return;
+      const { startIdx, currentIdx, moved } = planUpcomingAddState;
+      const lo = Math.min(startIdx, currentIdx), hi = Math.max(startIdx, currentIdx);
+      clearHighlight();
+      planUpcomingAddState = null;
+      const dayEl = board.querySelector(`.planup-day[data-idx="${lo}"]`);
+      const body = dayEl?.querySelector(".planup-day-body");
+      if (body) showPlanInlineAdd(body, days[lo], moved ? days[hi] : null, renderPlanUpcomingBoard);
+    };
+    board.onpointerup = finish;
+    board.onpointercancel = () => { clearHighlight(); planUpcomingAddState = null; };
   }
 
   // "언젠가" 열: 요약만(최대 8개). 추가·삭제·이름수정은 '할일' 탭에서.
@@ -1089,8 +1347,9 @@
   }
 
   // 팝업 없이 그 날짜 칸에 바로 입력창을 추가함(기존 항목은 그대로 두고 입력창만 덧붙임)
-  function showPlanInlineAdd(body, startDate, endDate) {
-    const emptyTag = body.querySelector(".plan-day-empty");
+  // onEmpty: 입력 없이 취소했을 때 다시 그릴 렌더 함수(어느 보드에서 호출했는지에 따라 다름)
+  function showPlanInlineAdd(body, startDate, endDate, onEmpty = renderPlanBoard) {
+    const emptyTag = body.querySelector(".plan-day-empty, .planup-day-empty");
     if (emptyTag) emptyTag.remove();
     const row = document.createElement("div");
     row.className = "plan-inline-add";
@@ -1102,7 +1361,7 @@
     const commit = async () => {
       if (done) return;
       const title = input.value.trim();
-      if (!title) { row.remove(); if (!body.children.length) renderPlanBoard(); return; }
+      if (!title) { row.remove(); if (!body.children.length) onEmpty(); return; }
       done = true;
       const { error } = await sb.from("tok_todos").insert({ title, start_date: startDate, end_date: endDate });
       if (error) { alert("저장 실패: " + error.message); done = false; return; }
@@ -1110,7 +1369,7 @@
     };
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); commit(); }
-      else if (e.key === "Escape") { done = true; row.remove(); if (!body.children.length) renderPlanBoard(); }
+      else if (e.key === "Escape") { done = true; row.remove(); if (!body.children.length) onEmpty(); }
     });
     input.addEventListener("blur", commit);
   }
@@ -1167,18 +1426,6 @@
     renderTodo();
   };
 
-  async function toggleToday(taskId, checked) {
-    if (checked) {
-      const { error } = await sb.from("tok_habit_logs").insert({ habit_id: taskId, done_date: todayStr() });
-      if (error) { alert("체크 실패: " + error.message); return; }
-      logsToday.add(taskId);
-    } else {
-      const { error } = await sb.from("tok_habit_logs").delete().eq("habit_id", taskId).eq("done_date", todayStr());
-      if (error) { alert("체크 해제 실패: " + error.message); return; }
-      logsToday.delete(taskId);
-    }
-    renderHome();
-  }
 
   // ── 집 : 언젠가 할일 ──
   function renderSomeday() {
