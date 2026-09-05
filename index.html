@@ -177,6 +177,8 @@
   .plan-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .plan-row.done .plan-todo-title{color:var(--sub);text-decoration:line-through;}
   .plan-row.habit{color:var(--accent);}
+  .planup-drag-row{touch-action:none;cursor:grab;}
+  .planup-drag-row.dragging{opacity:.5;cursor:grabbing;}
   .plan-todo-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .plan-range-tag{font-size:10px;color:var(--sub);flex-shrink:0;}
   .plan-todo-edit{border:none;background:none;color:var(--sub);font-size:12px;cursor:pointer;flex-shrink:0;padding:2px 4px;}
@@ -1097,12 +1099,12 @@
           <span class="plan-todo-title">${escapeHtml(t.name)}</span>
         </div>`).join("");
       const eventHtml = dayEvents.map(e => `
-        <div class="plan-row">
+        <div class="plan-row planup-drag-row" data-id="${e.id}" data-kind="event">
           <span class="plan-todo-title">📅 ${e.event_time ? e.event_time.slice(0, 5) + " " : ""}${escapeHtml(e.title)}</span>
         </div>`).join("");
       const todoHtml = dayTodos.map(td => {
         const isRange = td.end_date && td.end_date !== td.start_date;
-        return `<div class="plan-row todo" data-id="${td.id}">
+        return `<div class="plan-row todo ${isRange ? "" : "planup-drag-row"}" data-id="${td.id}" data-kind="todo">
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
           <span class="plan-todo-title planup-todo-title">${td.todo_time ? td.todo_time.slice(0, 5) + " " : ""}${escapeHtml(td.title)}</span>
           ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
@@ -1151,6 +1153,66 @@
     });
 
     attachPlanUpcomingDrag(days);
+    attachPlanUpcomingItemDrag(days);
+  }
+
+  // 다가오는 계획 보드: 일정·할일(기간 없는 단일 날짜만) 항목을 다른 날짜 칸으로 드래그하면 그 날짜로 옮겨짐.
+  // 습관은 매일 반복이라 특정 날짜 소속이 아니므로 대상에서 제외. 기간 있는 할일은 애매해서 제외(연필로 직접 수정).
+  function attachPlanUpcomingItemDrag(days) {
+    const board = $("planUpcomingBoard");
+    if (!board) return;
+
+    document.querySelectorAll(".planup-drag-row[data-id]").forEach(row => {
+      let moved = false, startX = 0, startY = 0, curTarget = null;
+      row.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input") || e.target.closest(".planup-todo-edit")) return;
+        e.stopPropagation();
+        moved = false; curTarget = null;
+        startX = e.clientX; startY = e.clientY;
+        row.setPointerCapture?.(e.pointerId);
+      });
+      row.addEventListener("pointermove", (e) => {
+        if (!row.hasPointerCapture?.(e.pointerId)) return;
+        e.stopPropagation();
+        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+          moved = true;
+          row.classList.add("dragging");
+        }
+        if (!moved) return;
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".planup-day[data-idx]");
+        if (under !== curTarget) {
+          curTarget?.classList.remove("drag-hi");
+          curTarget = under || null;
+          curTarget?.classList.add("drag-hi");
+        }
+      });
+      const finish = async (e) => {
+        if (!row.hasPointerCapture?.(e.pointerId)) return;
+        e.stopPropagation();
+        const wasMoved = moved, target = curTarget, kind = row.dataset.kind, id = row.dataset.id;
+        moved = false; curTarget = null;
+        row.classList.remove("dragging");
+        target?.classList.remove("drag-hi");
+        if (!wasMoved || !target) return;
+        const newDate = days[parseInt(target.dataset.idx, 10)];
+        if (kind === "event") {
+          const { error } = await sb.from("tok_events").update({ event_date: newDate }).eq("id", id);
+          if (error) { alert("이동 실패: " + error.message); return; }
+        } else {
+          const { error } = await sb.from("tok_todos").update({ start_date: newDate, end_date: null }).eq("id", id);
+          if (error) { alert("이동 실패: " + error.message); return; }
+        }
+        await loadAll();
+      };
+      row.addEventListener("pointerup", finish);
+      row.addEventListener("pointercancel", (e) => {
+        e.stopPropagation();
+        moved = false;
+        row.classList.remove("dragging");
+        curTarget?.classList.remove("drag-hi");
+        curTarget = null;
+      });
+    });
   }
 
   let planUpcomingAddState = null;
