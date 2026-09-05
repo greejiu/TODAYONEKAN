@@ -593,6 +593,28 @@
     return habitNextDueDate(habit, dateStr) <= dateStr;
   }
 
+  // ── 다가오는 계획 보드용: 이 습관의 "다음 차례" 딱 하나만 계산 ──
+  // (오늘 열의 isHabitDueOnDate와 달리, 오늘 체크했으면 그것까지 반영해서 다음 차례 날짜를 구함.
+  //  완료해야만 그 다음 차례가 생기는 방식이라 미래로 여러 개를 미리 만들어두지 않음 — 한 번에 딱 하나만 존재.)
+  function habitLastDoneOnOrBefore(habitId, dateStr) {
+    let last = null;
+    for (const r of habitLogs) {
+      if (r.habit_id === habitId && r.done_date <= dateStr && (!last || r.done_date > last)) last = r.done_date;
+    }
+    return last;
+  }
+  function advanceDue(dateStr, habit) {
+    const interval = habit.repeat_interval || 1;
+    if (habit.repeat_unit === "week") return addDaysStr(dateStr, interval * 7);
+    if (habit.repeat_unit === "month") return addMonthsStr(dateStr, interval);
+    return addDaysStr(dateStr, interval);
+  }
+  function habitNextDueAfter(habit, dateStr) {
+    const last = habitLastDoneOnOrBefore(habit.id, dateStr);
+    if (!last) return habit.created_at ? habit.created_at.slice(0, 10) : dateStr;
+    return advanceDue(last, habit);
+  }
+
   // 습관 체크를 "오늘"이 아닌 다른 날짜(과거·미래)에도 할 수 있게 일반화한 버전.
   async function toggleHabitForDate(taskId, checked, dateStr) {
     if (checked) {
@@ -1193,6 +1215,9 @@
   };
 
   // "다가오는 계획" 열: 내일부터 7일, 일정+할일+습관을 모두 보여줌.
+  // 습관은 반복주기상 "다음 차례" 날짜에만 뜸 — 완료해야 그 다음 차례가 새로 생기는 방식이라
+  // 미래에 여러 개를 미리 만들어두지 않고, 한 번에 딱 하나의 예정일만 존재함(habitNextDueAfter).
+  // 반복 없음으로 설정한 습관만 예전처럼 매일 다 뜸.
   // 빈 날짜도 칸이 남아있어 드래그로 그 날짜에 할일을 추가할 수 있음(습관·일정은 표시만 — 드래그 이동은 다음 단계).
   async function renderPlanUpcomingBoard() {
     const days = [];
@@ -1205,13 +1230,16 @@
     (logData || []).forEach(r => { if (logsByDate[r.done_date]) logsByDate[r.done_date].add(r.habit_id); });
 
     const active = tasks.filter(t => t.is_active);
+    // 습관마다 "다음 차례" 딱 하나의 날짜만 계산해둠(반복 없음은 null — 매일 표시라는 뜻으로 따로 처리)
+    const habitNextDate = new Map(active.map(t => [t.id, t.repeat_unit ? habitNextDueAfter(t, todayStr()) : null]));
 
     $("planUpcomingBoard").innerHTML = days.map((dateStr, idx) => {
       const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
       const dayEvents = events.filter(e => e.event_date === dateStr).sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
       const doneSet = logsByDate[dateStr];
+      const dayHabits = active.filter(t => !t.repeat_unit || habitNextDate.get(t.id) === dateStr);
 
-      const habitHtml = active.map(t => `
+      const habitHtml = dayHabits.map(t => `
         <div class="plan-row habit ${doneSet.has(t.id) ? "done" : ""}">
           <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="planup-habit-check" />
           <span class="plan-todo-title">${escapeHtml(t.name)}</span>
