@@ -211,6 +211,13 @@
   .del{border:none;background:none;color:var(--danger);font-size:12px;cursor:pointer;flex-shrink:0;}
   .settingsbtn{border:1px solid var(--line);background:#fff;border-radius:999px;font-size:12px;width:26px;height:26px;line-height:1;cursor:pointer;color:var(--sub);flex-shrink:0;}
   .habit-cat-chip{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10px;color:#fff;}
+  .hs-cat-manage-label{font-size:11px;color:var(--sub);margin:-6px 0 6px;}
+  .hs-cat-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
+  .hs-cat-row{display:flex;align-items:center;gap:6px;}
+  .hs-cat-row input[type="color"]{width:28px;height:28px;padding:1px;border:1px solid var(--line);border-radius:6px;flex-shrink:0;}
+  .hs-cat-row input[type="text"]{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;}
+  .hs-cat-del{border:none;background:none;color:var(--sub);font-size:14px;cursor:pointer;flex-shrink:0;width:24px;height:24px;line-height:1;border-radius:6px;}
+  .hs-cat-del:hover{color:var(--danger);background:var(--accent-soft);}
 
   .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px rgba(154,140,240,.4);cursor:pointer;z-index:8;}
   @media (max-width:760px){ .fab{bottom:78px;} }
@@ -402,6 +409,8 @@
       </div>
     </div>
     <div class="field"><label>카테고리</label><select id="hs_category"></select></div>
+    <div class="hs-cat-manage-label">카테고리 관리 (이름 수정 · 삭제)</div>
+    <div class="hs-cat-list" id="hs_cat_list"></div>
     <div class="field" style="display:flex;gap:6px;align-items:flex-end;">
       <div style="flex:1;"><label>새 카테고리</label><input id="hs_newcat_name" type="text" placeholder="예: 집안일" /></div>
       <input id="hs_newcat_color" type="color" value="#9a8cf0" style="width:38px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;" />
@@ -2093,6 +2102,7 @@
     $("hs_repeat_unit").value = habit.repeat_unit || "";
     $("hs_repeat_interval").value = habit.repeat_interval || 1;
     populateHabitCategorySelect(habit.category_id);
+    renderHabitCategoryList();
     $("hs_newcat_name").value = "";
     $("habitSheetBg").classList.add("open");
   }
@@ -2107,8 +2117,63 @@
     if (error) { alert("카테고리 추가 실패: " + error.message); return; }
     habitCategories.push(data);
     populateHabitCategorySelect(data.id);
+    renderHabitCategoryList();
     $("hs_newcat_name").value = "";
   };
+  // 카테고리 이름 수정 · 색상 변경 · 삭제 (습관 설정 시트 내 관리 목록)
+  function renderHabitCategoryList() {
+    const host = $("hs_cat_list");
+    if (!host) return;
+    host.innerHTML = habitCategories.map(c => `
+      <div class="hs-cat-row" data-id="${c.id}">
+        <input type="color" class="hs-cat-color-input" data-id="${c.id}" value="${c.color || "#9a8cf0"}" />
+        <input type="text" class="hs-cat-name-input" data-id="${c.id}" value="${escapeHtml(c.name)}" />
+        <button type="button" class="hs-cat-del" data-id="${c.id}" title="카테고리 삭제">✕</button>
+      </div>
+    `).join("");
+    host.querySelectorAll(".hs-cat-color-input").forEach(inp => {
+      inp.onchange = async () => {
+        const id = inp.dataset.id;
+        const color = inp.value;
+        const { error } = await sb.from("tok_habit_categories").update({ color }).eq("id", id);
+        if (error) { alert("색상 변경 실패: " + error.message); return; }
+        const cat = habitCategories.find(c => c.id === id);
+        if (cat) cat.color = color;
+        renderTodo();
+      };
+    });
+    host.querySelectorAll(".hs-cat-name-input").forEach(inp => {
+      const commit = async () => {
+        const id = inp.dataset.id;
+        const name = inp.value.trim();
+        const cat = habitCategories.find(c => c.id === id);
+        if (!name) { inp.value = cat ? cat.name : ""; return; }
+        if (cat && cat.name === name) return;
+        const { error } = await sb.from("tok_habit_categories").update({ name }).eq("id", id);
+        if (error) { alert("이름 변경 실패: " + error.message); return; }
+        if (cat) cat.name = name;
+        populateHabitCategorySelect($("hs_category").value);
+        renderTodo();
+      };
+      inp.onblur = commit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") inp.blur(); };
+    });
+    host.querySelectorAll(".hs-cat-del").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.id;
+        const cat = habitCategories.find(c => c.id === id);
+        if (!confirm(`"${cat ? cat.name : "카테고리"}"를 삭제할까요? 이 카테고리를 쓰던 습관은 "카테고리 없음"으로 바뀌어요.`)) return;
+        const { error } = await sb.from("tok_habit_categories").delete().eq("id", id);
+        if (error) { alert("삭제 실패: " + error.message); return; }
+        const wasSelected = $("hs_category").value === id;
+        habitCategories = habitCategories.filter(c => c.id !== id);
+        tasks.forEach(t => { if (t.category_id === id) t.category_id = null; });
+        populateHabitCategorySelect(wasSelected ? "" : $("hs_category").value);
+        renderHabitCategoryList();
+        renderTodo();
+      };
+    });
+  }
   $("habitSheetSaveBtn").onclick = async () => {
     const editId = $("habitSheetBg").dataset.editId;
     if (!editId) return;
