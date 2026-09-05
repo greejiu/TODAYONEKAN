@@ -34,7 +34,6 @@
 
   .bottombar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);z-index:10;}
   .bottombar .navitem{flex:1;flex-direction:column;text-align:center;font-size:11px;margin:0;border-radius:0;padding:8px 0;}
-  .bottombar{display:none;}
   @media (max-width:760px){
     .sidebar{display:none;}
     .bottombar{display:flex;}
@@ -43,17 +42,42 @@
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;}
   .empty{text-align:center;color:var(--sub);font-size:13px;padding:50px 0;}
+  .section-label{font-size:12px;color:var(--sub);font-weight:700;margin:18px 2px 8px;}
+  .section-label:first-child{margin-top:0;}
 
-  /* ── 집 화면 ── */
-  .progress-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;}
+  /* ── 집 : 진행률 ── */
+  .progress-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:6px;}
   .progress-text{font-size:14px;color:var(--sub);margin-bottom:8px;}
   .progress-bar{height:8px;background:var(--bg);border-radius:999px;overflow:hidden;}
   .progress-fill{height:100%;background:var(--accent);border-radius:999px;transition:width .25s;}
+
+  /* ── 집 : 다가오는 일정 ── */
+  .upcoming-row{display:flex;align-items:baseline;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;}
+  .upcoming-row:last-child{border-bottom:none;}
+  .upcoming-row .d{color:var(--accent);font-weight:600;flex-shrink:0;font-size:12px;}
+  .upcoming-row .t{color:var(--sub);flex-shrink:0;font-size:11px;}
+  .upcoming-row .ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* ── 집 : 타임라인(시간블럭) ── */
+  .timeline-block{margin-bottom:12px;}
+  .timeline-block-head{display:flex;align-items:baseline;gap:8px;margin:0 2px 6px;}
+  .timeline-block-head .name{font-size:13px;font-weight:700;}
+  .timeline-block-head .range{font-size:11px;color:var(--sub);}
   .task-row{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--line);}
   .task-row:last-child{border-bottom:none;}
   .task-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .task-row span{font-size:14px;}
   .task-row.done span{color:var(--sub);text-decoration:line-through;}
+
+  /* ── 집 : 언젠가 할일 ── */
+  .someday-add-row{display:flex;gap:6px;margin-bottom:8px;}
+  .someday-add-row input{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;}
+  .someday-add-row button{padding:0 14px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;}
+  .someday-row{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;}
+  .someday-row:last-child{border-bottom:none;}
+  .someday-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+  .someday-row span{flex:1;}
+  .someday-row.done span{color:var(--sub);text-decoration:line-through;}
 
   /* ── 일정 화면 ── */
   .day-group{margin-bottom:14px;}
@@ -69,11 +93,13 @@
   /* ── 할일 관리 화면 ── */
   .todo-row{display:flex;align-items:center;gap:8px;padding:12px 4px;border-bottom:1px solid var(--line);}
   .todo-row:last-child{border-bottom:none;}
-  .todo-row span{flex:1;font-size:14px;}
-  .todo-row.inactive span{color:var(--sub);}
-  .togglebtn{border:1px solid var(--line);background:#fff;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--sub);}
+  .todo-row .info{flex:1;min-width:0;}
+  .todo-row .name{font-size:14px;}
+  .todo-row .block-tag{font-size:11px;color:var(--sub);}
+  .todo-row.inactive .name{color:var(--sub);}
+  .togglebtn{border:1px solid var(--line);background:#fff;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--sub);flex-shrink:0;}
   .togglebtn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);}
-  .del{border:none;background:none;color:var(--danger);font-size:12px;cursor:pointer;}
+  .del{border:none;background:none;color:var(--danger);font-size:12px;cursor:pointer;flex-shrink:0;}
 
   .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px rgba(79,109,245,.4);cursor:pointer;z-index:8;}
   @media (max-width:760px){ .fab{bottom:78px;} }
@@ -84,7 +110,7 @@
   .sheet h2{font-size:15px;margin:0 0 12px;}
   .field{margin-bottom:10px;}
   .field label{font-size:12px;color:var(--sub);display:block;margin-bottom:4px;}
-  .field input, .field textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;}
+  .field input, .field textarea, .field select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;}
   .field.split{display:flex;gap:8px;}
   .field.split > div{flex:1;}
   .sheet-actions{display:flex;gap:8px;margin-top:14px;}
@@ -118,12 +144,28 @@
       <!-- 집 -->
       <div class="page" data-page="home">
         <div class="pagehead"><h2>🏠 집</h2></div>
+
         <div class="progress-wrap">
           <div class="progress-text" id="homeProgressText">오늘 0/0 완료</div>
           <div class="progress-bar"><div class="progress-fill" id="homeProgressFill" style="width:0%"></div></div>
         </div>
-        <div id="homeList"></div>
+
+        <div class="section-label">📅 다가오는 일정</div>
+        <div class="card" id="upcomingCard"></div>
+        <div id="upcomingEmpty" class="empty" style="display:none;padding:16px 0;">다가오는 일정이 없어요.</div>
+
+        <div class="section-label">🕒 오늘의 타임라인</div>
+        <div id="timelineWrap"></div>
         <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 할일이 없어요.<br/>'할일' 탭에서 먼저 추가해보세요.</div>
+
+        <div class="section-label">💭 언젠가 할일</div>
+        <div class="card">
+          <div class="someday-add-row">
+            <input id="somedayInput" type="text" placeholder="나중에 할 것 같은 일 아무거나 적어보세요" />
+            <button id="somedayAddBtn">추가</button>
+          </div>
+          <div id="somedayList"></div>
+        </div>
       </div>
 
       <!-- 일정 -->
@@ -173,6 +215,9 @@
   <div class="sheet">
     <h2>할일 추가</h2>
     <div class="field"><label>할일 이름</label><input id="tk_name" type="text" placeholder="예: 물 마시기" /></div>
+    <div class="field"><label>시간블럭(선택)</label>
+      <select id="tk_block"><option value="">미분류</option></select>
+    </div>
     <div class="sheet-actions">
       <button class="btn-ghost" id="taskCancelBtn">취소</button>
       <button class="btn-primary" id="taskSaveBtn">저장</button>
@@ -189,10 +234,14 @@
 
   const $ = (id) => document.getElementById(id);
   const todayStr = () => new Date().toISOString().slice(0,10);
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const minutesToHHMM = (m) => `${pad2(Math.floor(m/60) % 24)}:${pad2(m%60)}`;
 
   let tasks = [];
   let logsToday = new Set(); // task_id set, 오늘 완료된 것
   let events = [];
+  let timeBlocks = [];
+  let somedayItems = [];
   let currentPage = "home";
 
   // ── 인증 ──
@@ -238,37 +287,104 @@
 
   // ── 데이터 로드 ──
   async function loadAll() {
-    const [{ data: taskData, error: e1 }, { data: logData, error: e2 }, { data: eventData, error: e3 }] = await Promise.all([
+    const [
+      { data: taskData, error: e1 },
+      { data: logData, error: e2 },
+      { data: eventData, error: e3 },
+      { data: blockData, error: e4 },
+      { data: somedayData, error: e5 },
+    ] = await Promise.all([
       sb.from("tok_tasks").select("*").order("sort_order").order("created_at"),
       sb.from("tok_task_logs").select("task_id").eq("done_date", todayStr()),
       sb.from("tok_events").select("*").order("event_date").order("event_time"),
+      sb.from("tok_time_blocks").select("*").order("sort_order"),
+      sb.from("tok_someday").select("*").order("created_at"),
     ]);
-    if (e1 || e2 || e3) { alert("불러오기 실패: " + (e1||e2||e3).message); return; }
+    const firstError = e1 || e2 || e3 || e4 || e5;
+    if (firstError) { alert("불러오기 실패: " + firstError.message); return; }
     tasks = taskData || [];
     logsToday = new Set((logData || []).map(r => r.task_id));
     events = eventData || [];
+    timeBlocks = blockData || [];
+    somedayItems = somedayData || [];
     renderHome();
     renderSchedule();
     renderTodo();
+    populateBlockSelect();
   }
 
-  // ── 집 화면 ──
-  function renderHome() {
+  // ── 집 : 진행률 ──
+  function renderProgress() {
     const active = tasks.filter(t => t.is_active);
     const doneCount = active.filter(t => logsToday.has(t.id)).length;
     $("homeProgressText").textContent = `오늘 ${doneCount}/${active.length} 완료`;
     $("homeProgressFill").style.width = active.length ? `${Math.round(doneCount/active.length*100)}%` : "0%";
+  }
+
+  // ── 집 : 다가오는 일정 ──
+  function renderUpcoming() {
+    const today = todayStr();
+    const upcoming = events.filter(e => e.event_date >= today).slice(0, 5);
+    $("upcomingEmpty").style.display = upcoming.length ? "none" : "block";
+    $("upcomingCard").style.display = upcoming.length ? "block" : "none";
+    $("upcomingCard").innerHTML = upcoming.map(e => `
+      <div class="upcoming-row">
+        <span class="d">${formatDateShort(e.event_date)}</span>
+        <span class="t">${e.event_time ? e.event_time.slice(0,5) : ""}</span>
+        <span class="ti">${escapeHtml(e.title)}</span>
+      </div>
+    `).join("");
+  }
+
+  // ── 집 : 타임라인(시간블럭별 할일) ──
+  function renderHome() {
+    renderProgress();
+    renderUpcoming();
+
+    const active = tasks.filter(t => t.is_active);
     $("homeEmpty").style.display = active.length ? "none" : "block";
-    $("homeList").innerHTML = active.map(t => {
-      const done = logsToday.has(t.id);
-      return `<div class="task-row ${done?'done':''}">
-        <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
-        <span>${escapeHtml(t.name)}</span>
-      </div>`;
-    }).join("");
+
+    const byBlock = new Map();
+    const unassigned = [];
+    active.forEach(t => {
+      if (t.block_id) {
+        if (!byBlock.has(t.block_id)) byBlock.set(t.block_id, []);
+        byBlock.get(t.block_id).push(t);
+      } else {
+        unassigned.push(t);
+      }
+    });
+
+    const groups = [];
+    timeBlocks.forEach(b => {
+      const list = byBlock.get(b.id) || [];
+      if (list.length) groups.push({ title: b.title, range: `${minutesToHHMM(b.start_minute)}–${minutesToHHMM(b.end_minute)}`, items: list });
+    });
+    if (unassigned.length) groups.push({ title: "미분류", range: "", items: unassigned });
+
+    $("timelineWrap").innerHTML = groups.map(g => `
+      <div class="timeline-block">
+        <div class="timeline-block-head">
+          <span class="name">${escapeHtml(g.title)}</span>
+          ${g.range ? `<span class="range">${g.range}</span>` : ""}
+        </div>
+        <div class="card">
+          ${g.items.map(t => {
+            const done = logsToday.has(t.id);
+            return `<div class="task-row ${done?'done':''}">
+              <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
+              <span>${escapeHtml(t.name)}</span>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>
+    `).join("");
+
     document.querySelectorAll(".home-check").forEach(cb => {
       cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
     });
+
+    renderSomeday();
   }
 
   async function toggleToday(taskId, checked) {
@@ -283,6 +399,47 @@
     }
     renderHome();
   }
+
+  // ── 집 : 언젠가 할일 ──
+  function renderSomeday() {
+    const sorted = [...somedayItems].sort((a, b) => (a.is_done === b.is_done) ? 0 : (a.is_done ? 1 : -1));
+    $("somedayList").innerHTML = sorted.map(item => `
+      <div class="someday-row ${item.is_done?'done':''}">
+        <input type="checkbox" ${item.is_done?"checked":""} data-id="${item.id}" class="someday-check" />
+        <span>${escapeHtml(item.title)}</span>
+        <button class="del" data-id="${item.id}">삭제</button>
+      </div>
+    `).join("");
+    document.querySelectorAll(".someday-check").forEach(cb => {
+      cb.onchange = async () => {
+        const { error } = await sb.from("tok_someday").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        const item = somedayItems.find(s => s.id === cb.dataset.id);
+        if (item) item.is_done = cb.checked;
+        renderSomeday();
+      };
+    });
+    document.querySelectorAll("#somedayList .del").forEach(btn => {
+      btn.onclick = async () => {
+        const { error } = await sb.from("tok_someday").delete().eq("id", btn.dataset.id);
+        if (error) { alert("삭제 실패: " + error.message); return; }
+        somedayItems = somedayItems.filter(s => s.id !== btn.dataset.id);
+        renderSomeday();
+      };
+    });
+  }
+  $("somedayAddBtn").onclick = async () => {
+    const title = $("somedayInput").value.trim();
+    if (!title) return;
+    const { data, error } = await sb.from("tok_someday").insert({ title }).select().single();
+    if (error) { alert("추가 실패: " + error.message); return; }
+    somedayItems.push(data);
+    $("somedayInput").value = "";
+    renderSomeday();
+  };
+  $("somedayInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("somedayAddBtn").click();
+  });
 
   // ── 일정 화면 ──
   function renderSchedule() {
@@ -321,13 +478,26 @@
     const days = ["일","월","화","수","목","금","토"];
     return `${dt.getMonth()+1}월 ${dt.getDate()}일 (${days[dt.getDay()]})`;
   }
+  function formatDateShort(d) {
+    if (d === todayStr()) return "오늘";
+    const dt = new Date(d + "T00:00:00");
+    const days = ["일","월","화","수","목","금","토"];
+    return `${dt.getMonth()+1}/${dt.getDate()}(${days[dt.getDay()]})`;
+  }
 
   // ── 할일 관리 화면 ──
+  function blockTitleFor(blockId) {
+    const b = timeBlocks.find(x => x.id === blockId);
+    return b ? b.title : "미분류";
+  }
   function renderTodo() {
     $("todoEmpty").style.display = tasks.length ? "none" : "block";
     $("todoList").innerHTML = tasks.map(t => `
       <div class="todo-row ${t.is_active?"":"inactive"}">
-        <span>${escapeHtml(t.name)}</span>
+        <div class="info">
+          <div class="name">${escapeHtml(t.name)}</div>
+          <div class="block-tag">${escapeHtml(blockTitleFor(t.block_id))}</div>
+        </div>
         <button class="togglebtn ${t.is_active?"on":""}" data-id="${t.id}" data-active="${t.is_active}">${t.is_active?"진행중":"멈춤"}</button>
         <button class="del" data-id="${t.id}">삭제</button>
       </div>
@@ -348,6 +518,12 @@
         await loadAll();
       };
     });
+  }
+
+  function populateBlockSelect() {
+    const options = ['<option value="">미분류</option>']
+      .concat(timeBlocks.map(b => `<option value="${b.id}">${escapeHtml(b.title)} (${minutesToHHMM(b.start_minute)}–${minutesToHHMM(b.end_minute)})</option>`));
+    $("tk_block").innerHTML = options.join("");
   }
 
   // ── + 버튼: 현재 페이지에 맞는 추가 시트 열기 ──
@@ -379,13 +555,15 @@
 
   function openTaskSheet() {
     $("tk_name").value = "";
+    $("tk_block").value = "";
     $("taskSheetBg").classList.add("open");
   }
   $("taskCancelBtn").onclick = () => $("taskSheetBg").classList.remove("open");
   $("taskSaveBtn").onclick = async () => {
     const name = $("tk_name").value.trim();
     if (!name) { alert("할일 이름을 입력해주세요."); return; }
-    const { error } = await sb.from("tok_tasks").insert({ name, sort_order: tasks.length });
+    const block_id = $("tk_block").value || null;
+    const { error } = await sb.from("tok_tasks").insert({ name, sort_order: tasks.length, block_id });
     if (error) { alert("저장 실패: " + error.message); return; }
     $("taskSheetBg").classList.remove("open");
     await loadAll();
