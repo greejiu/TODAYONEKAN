@@ -60,13 +60,15 @@
   .upcoming-row .ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* ── 집 : 습관 목록(행) ── */
-  .task-row{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--line);}
+  .task-row{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--line);touch-action:none;}
   .task-row:last-child{border-bottom:none;}
   .task-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .task-row span{font-size:14px;}
   .task-row.done span{color:var(--sub);text-decoration:line-through;}
+  .task-row.dragging{opacity:.5;}
   .block-add-row{padding:10px 4px;color:var(--sub);font-size:13px;text-align:center;cursor:pointer;border-top:1px dashed var(--line);}
   .block-add-row:hover{color:var(--accent);}
+  .card.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-soft);}
 
   /* ── 집 : 목록/타임라인 보기 전환 ── */
   .view-toggle{display:flex;gap:6px;margin-bottom:10px;}
@@ -79,14 +81,15 @@
   .tl-row-line{grid-column:2;border-top:1px solid var(--line);pointer-events:none;}
   .tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;position:relative;overflow:hidden;z-index:1;touch-action:none;cursor:pointer;}
   .tl-task.dragging{opacity:.85;box-shadow:0 3px 10px rgba(60,50,100,.18);z-index:5;cursor:grabbing;}
-  .tl-task input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+  .tl-task input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;position:relative;z-index:2;}
   .tl-task .tl-title{font-size:12px;flex:1;}
   .tl-task.done .tl-title{color:var(--sub);text-decoration:line-through;}
-  .tl-handle{position:absolute;left:0;right:0;height:6px;cursor:ns-resize;z-index:3;opacity:0;transition:opacity .12s;}
-  .tl-handle:hover{opacity:1;}
-  .tl-handle-top{top:0;}
-  .tl-handle-bottom{bottom:0;}
-  .tl-handle::after{content:"";display:block;margin:1px auto 0;width:22px;height:3px;border-radius:2px;background:var(--accent);opacity:.6;}
+  /* 위/아래 끝 8px만 즉시 드래그하면 시간 조절(resize) 존 — 마우스 올리면 살짝 표시만, 클릭은 안 뺏음(pointer-events:none) */
+  .tl-task::before, .tl-task::after{content:"";position:absolute;left:10px;right:10px;height:2px;border-radius:2px;background:var(--accent);opacity:0;pointer-events:none;transition:opacity .12s;}
+  .tl-task::before{top:2px;}
+  .tl-task::after{bottom:2px;}
+  .tl-task.edge-hover-top::before{opacity:.6;}
+  .tl-task.edge-hover-bottom::after{opacity:.6;}
   .tl-add-preview{grid-column:2;background:rgba(154,140,240,.18);border:2px dashed var(--accent);border-radius:8px;margin:0 4px;pointer-events:none;}
   .tl-unassigned{margin-top:10px;}
   .tl-unassigned .section-label{margin:0 2px 8px;}
@@ -455,7 +458,7 @@
 
   function timedRowHtml(t) {
     const done = logsToday.has(t.id);
-    return `<div class="task-row ${done?'done':''}">
+    return `<div class="task-row ${done?'done':''}" data-id="${t.id}">
       <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
       <span style="color:var(--sub);font-size:12px;margin-right:6px;">${minutesToHHMM(t.start_minute)}</span>
       <span>${escapeHtml(t.name)}</span>
@@ -475,7 +478,7 @@
         const inBlock = timed.filter(t => t.start_minute >= block.start_minute && t.start_minute < block.end_minute);
         inBlock.forEach(t => covered.add(t.id));
         html += `<div class="section-label" style="margin:14px 2px 8px;">${escapeHtml(block.title)}</div>`;
-        html += `<div class="card">${inBlock.map(timedRowHtml).join("")}<div class="block-add-row" data-block-start="${block.start_minute}">+ 추가</div></div>`;
+        html += `<div class="card" data-block-start="${block.start_minute}">${inBlock.map(timedRowHtml).join("")}<div class="block-add-row" data-block-start="${block.start_minute}">+ 추가</div></div>`;
       });
       const uncovered = timed.filter(t => !covered.has(t.id));
       if (uncovered.length) {
@@ -516,6 +519,56 @@
         input.addEventListener("blur", commit);
       };
     });
+
+    attachBlockDrag();
+  }
+
+  // 타임블럭(목록) 보기: 습관 행을 다른 블럭 카드 위로 드래그해서 옮기면
+  // 그 블럭의 시작시각으로 재배정됨(소요시간은 그대로 유지). 짧게 누르기만 하면 아무 것도 안 함
+  // (체크박스는 기존과 동일하게 그대로 동작).
+  function attachBlockDrag() {
+    let dragEl = null, dragId = null, moved = false, startX = 0, startY = 0, curTarget = null;
+
+    document.querySelectorAll(".task-row[data-id]").forEach(row => {
+      row.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input")) return;
+        dragEl = row; dragId = row.dataset.id; moved = false; curTarget = null;
+        startX = e.clientX; startY = e.clientY;
+        row.setPointerCapture?.(e.pointerId);
+      });
+      row.addEventListener("pointermove", (e) => {
+        if (!dragEl) return;
+        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+          moved = true;
+          dragEl.classList.add("dragging");
+        }
+        if (!moved) return;
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".card[data-block-start]");
+        if (under !== curTarget) {
+          curTarget?.classList.remove("drop-target");
+          curTarget = under || null;
+          curTarget?.classList.add("drop-target");
+        }
+      });
+      const finish = async () => {
+        if (!dragEl) return;
+        const el = dragEl, id = dragId, wasMoved = moved, target = curTarget;
+        dragEl = null; dragId = null; moved = false; curTarget = null;
+        el.classList.remove("dragging");
+        target?.classList.remove("drop-target");
+        if (!wasMoved || !target) return; // 다른 블럭 위에서 놓지 않았으면 그대로 둠
+        const startMinute = parseInt(target.dataset.blockStart, 10);
+        const { error } = await sb.from("tok_habits").update({ start_minute: startMinute }).eq("id", id);
+        if (error) { alert("이동 실패: " + error.message); return; }
+        await loadAll();
+      };
+      row.addEventListener("pointerup", finish);
+      row.addEventListener("pointercancel", () => {
+        dragEl?.classList.remove("dragging");
+        curTarget?.classList.remove("drop-target");
+        dragEl = null; dragId = null; moved = false; curTarget = null;
+      });
+    });
   }
 
   // 타임라인 보기: 15분 단위 그리드 위에 습관을 시작 시각·소요시간에 맞춰 배치.
@@ -555,10 +608,8 @@
       const tEndRow = Math.max(tStartRow + 1, rowOf(t.start_minute + duration));
       const done = logsToday.has(t.id);
       tasksHtml += `<div class="tl-task ${done?'done':''}" data-id="${t.id}" data-start="${t.start_minute}" data-duration="${duration}" style="grid-row:${tStartRow} / ${tEndRow}">
-        <div class="tl-handle tl-handle-top"></div>
         <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
         <span class="tl-title">${escapeHtml(t.name)}</span>
-        <div class="tl-handle tl-handle-bottom"></div>
       </div>`;
     });
 
@@ -567,10 +618,14 @@
     attachTimelineItemDrag(minM);
   }
 
-  // 기존 습관 항목: 몸통을 짧게 클릭하면 이름 인라인 수정, 0.35초 이상 누르고 있다가 움직이면 이동.
-  // 위·아래 손잡이(마우스 올리면 나타남)는 롱프레스 없이 바로 드래그하면 시작/종료(소요시간) 조절.
-  // 롱프레스가 시작되기 전에 많이 움직이면(스크롤 등) 이동·수정 둘 다 취소함.
-  const TL_LONG_PRESS_MS = 350; // 필요하면 조절 가능(짧으면 오조작, 길면 느리게 느껴짐)
+  // 기존 습관 항목 인터랙션(2026-09-05 재설계):
+  // - 몸통 전체(위/아래 끝 8px 포함) 짧게 클릭 → 이름 인라인 수정
+  // - 몸통 아무 곳이나 0.3초 이상 누르고 있다가 움직이면 → 이동(시작시각 변경)
+  // - 단, 위/아래 끝 8px 구역에서는 누르자마자(0.3초 기다리지 않고) 바로 드래그하면 → 시간 조절(resize).
+  //   같은 구역이라도 눌러서 0.3초 넘게 가만히 있으면 그 뒤엔 이동으로 취급.
+  // - 그 외 몸통에서 0.3초 되기 전에 움직이면(스크롤 등으로 보고) 취소, 아무 것도 안 함.
+  const TL_LONG_PRESS_MS = 300;
+  const TL_EDGE_ZONE_PX = 8;
 
   function attachTimelineItemDrag(minM) {
     const rowOf = (m) => Math.floor((m - minM) / TL_SLOT_MIN) + 1;
@@ -582,15 +637,24 @@
       const origDuration = parseInt(task.dataset.duration, 10);
 
       let dragKind = null; // null(대기중) | "move" | "resize-top" | "resize-bottom"
-      let startY = 0, moved = false, cancelled = false;
+      let startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null;
       let longPressTimer = null;
       let pendingStart = origStart, pendingDuration = origDuration;
+
+      const zoneAt = (clientY) => {
+        const rect = task.getBoundingClientRect();
+        const offsetY = clientY - rect.top;
+        if (offsetY <= TL_EDGE_ZONE_PX) return "top";
+        if (offsetY >= rect.height - TL_EDGE_ZONE_PX) return "bottom";
+        return null;
+      };
 
       const applyPreview = () => {
         const sRow = rowOf(pendingStart), eRow = Math.max(sRow + 1, rowOf(pendingStart + pendingDuration));
         task.style.gridRow = `${sRow} / ${eRow}`;
       };
       const clearTimer = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+      const clearHoverHint = () => { task.classList.remove("edge-hover-top", "edge-hover-bottom"); task.style.cursor = ""; };
 
       const startEditTitle = () => {
         const titleEl = task.querySelector(".tl-title");
@@ -621,33 +685,48 @@
 
       task.addEventListener("pointerdown", (e) => {
         if (e.target.closest("input")) return;
-        const onTop = e.target.closest(".tl-handle-top");
-        const onBottom = e.target.closest(".tl-handle-bottom");
+        pressed = true;
         moved = false; cancelled = false;
         pendingStart = origStart; pendingDuration = origDuration;
         startY = e.clientY;
+        edgeAtStart = zoneAt(e.clientY);
+        dragKind = null;
         task.setPointerCapture?.(e.pointerId);
 
-        if (onTop || onBottom) {
-          // 손잡이는 마우스를 올려야 보이는 작은 전용 영역이라 롱프레스 없이 바로 조절 시작
-          dragKind = onTop ? "resize-top" : "resize-bottom";
-        } else {
-          // 몸통: 바로 잡지 않고 일정 시간 눌러야 "이동"으로 전환(짧게 떼면 이름 수정)
-          dragKind = null;
-          longPressTimer = setTimeout(() => {
-            longPressTimer = null;
-            if (cancelled) return;
-            dragKind = "move";
-            task.classList.add("dragging");
-          }, TL_LONG_PRESS_MS);
-        }
+        // 몸통 어디든(끝 8px 포함) 일단 0.3초 대기 → 그동안 안 움직이면 이동으로 전환
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          if (cancelled) return;
+          dragKind = "move";
+          task.classList.add("dragging");
+          clearHoverHint();
+        }, TL_LONG_PRESS_MS);
       });
       task.addEventListener("pointermove", (e) => {
+        if (!pressed) {
+          // 누르지 않은 상태(호버)에서는 끝 8px 구역이면 조절 커서/표시만 보여줌
+          const zone = zoneAt(e.clientY);
+          task.classList.toggle("edge-hover-top", zone === "top");
+          task.classList.toggle("edge-hover-bottom", zone === "bottom");
+          task.style.cursor = zone ? "ns-resize" : "";
+          return;
+        }
         const dy = e.clientY - startY;
         if (dragKind === null) {
-          // 롱프레스 대기 중에 많이 움직였으면 스크롤 등으로 보고 취소
-          if (!cancelled && Math.abs(dy) > 6) { cancelled = true; clearTimer(); }
-          return;
+          if (cancelled) return;
+          if (Math.abs(dy) > 6) {
+            clearTimer();
+            if (edgeAtStart) {
+              // 끝 구역에서 0.3초 기다리지 않고 바로 드래그 → 시간 조절
+              dragKind = edgeAtStart === "top" ? "resize-top" : "resize-bottom";
+            } else {
+              // 몸통 가운데에서 기다리지 않고 바로 움직이면 스크롤 등으로 보고 취소
+              cancelled = true;
+              return;
+            }
+          } else {
+            return;
+          }
         }
         if (Math.abs(dy) > 6) moved = true;
         if (!moved) return;
@@ -667,12 +746,14 @@
       });
       const finish = async () => {
         clearTimer();
+        pressed = false;
         const kind = dragKind;
         dragKind = null;
         task.classList.remove("dragging");
+        clearHoverHint();
 
         if (kind === null) {
-          if (!cancelled) startEditTitle(); // 롱프레스 전에 짧게 뗐으면 → 이름 수정
+          if (!cancelled) startEditTitle(); // 0.3초 되기 전에 짧게 뗐으면 → 이름 수정
           return;
         }
         if (!moved) return; // 누르기만 하고 움직이지 않았으면 아무 것도 안 함
@@ -683,7 +764,8 @@
         await loadAll();
       };
       task.addEventListener("pointerup", finish);
-      task.addEventListener("pointercancel", () => { clearTimer(); dragKind = null; task.classList.remove("dragging"); });
+      task.addEventListener("pointercancel", () => { clearTimer(); pressed = false; dragKind = null; task.classList.remove("dragging"); clearHoverHint(); });
+      task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
     });
   }
 
