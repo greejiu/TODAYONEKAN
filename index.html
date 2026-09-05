@@ -140,11 +140,18 @@
   .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;flex-shrink:0;}
   .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-  /* ── 집 : 오늘 열의 타임블럭/타임라인(습관+일정 통합, 보기전용) ── */
+  /* ── 집 : 오늘 열의 타임블럭/타임라인(습관+일정 통합, 드래그로 이동/조절 가능) ── */
   .ag-tl-grid{display:grid;grid-template-columns:34px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;}
-  .ag-tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;overflow:hidden;}
+  .ag-tl-task{grid-column:2;display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:1px 8px;padding:0 8px;font-size:12px;position:relative;overflow:hidden;z-index:1;touch-action:none;cursor:pointer;}
   .ag-tl-task.done{opacity:.55;text-decoration:line-through;}
   .ag-tl-task.event{background:#fff;border-style:dashed;}
+  .ag-tl-task.dragging{opacity:.85;box-shadow:0 3px 10px rgba(60,50,100,.18);z-index:5;cursor:grabbing;}
+  .ag-tl-task .ag-tl-title{font-size:12px;flex:1;}
+  .ag-tl-task::before, .ag-tl-task::after{content:"";position:absolute;left:10px;right:10px;height:2px;border-radius:2px;background:var(--accent);opacity:0;pointer-events:none;transition:opacity .12s;}
+  .ag-tl-task::before{top:2px;}
+  .ag-tl-task::after{bottom:2px;}
+  .ag-tl-task.edge-hover-top::before{opacity:.6;}
+  .ag-tl-task.edge-hover-bottom::after{opacity:.6;}
 
   /* ── 집 : 다가오는 계획 (7일 보드, 습관 탭의 #planBoard와는 별도 인스턴스) ── */
   .planup-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
@@ -635,15 +642,166 @@
     let itemsHtml = "";
     items.forEach(it => {
       const sRow = rowOf(it.start_minute), eRow = Math.max(sRow + 1, rowOf(it.start_minute + it.duration_minutes));
-      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" style="grid-row:${sRow} / ${eRow}">
+      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" data-start="${it.start_minute}" data-duration="${it.duration_minutes}" style="grid-row:${sRow} / ${eRow}">
         ${it.kind === "habit"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
           : `<span class="agenda-tag">일정</span>`}
-        <span>${escapeHtml(it.name)}</span>
+        <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
     });
     $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}${itemsHtml}</div>`;
     wireAgendaHabitChecks();
+    attachAgendaTimelineItemDrag(minM);
+  }
+
+  // 오늘 열 타임라인의 습관·일정 항목 드래그(습관탭 attachTimelineItemDrag와 동일 UX, 습관+일정 공용으로 일반화):
+  // - 짧게 클릭 → 이름 수정, 0.3초 이상 누르다 움직이면 이동, 끝 8px 구역은 바로 드래그하면 시간(길이) 조절.
+  // - 단, 일정은 duration 개념이 없어(시작 시각만 있음) 조절 없이 이동만 지원.
+  function attachAgendaTimelineItemDrag(minM) {
+    const rowOf = (m) => Math.floor((m - minM) / AG_TL_SLOT_MIN) + 1;
+
+    document.querySelectorAll(".ag-tl-task[data-id]").forEach(task => {
+      const id = task.dataset.id;
+      const kind = task.dataset.kind;
+      const origStart = parseInt(task.dataset.start, 10);
+      const origDuration = parseInt(task.dataset.duration, 10);
+      const resizable = kind === "habit"; // 일정은 길이 개념이 없어 조절 제외
+
+      let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null;
+      let longPressTimer = null;
+      let pendingStart = origStart, pendingDuration = origDuration;
+
+      const zoneAt = (clientY) => {
+        if (!resizable) return null;
+        const rect = task.getBoundingClientRect();
+        const offsetY = clientY - rect.top;
+        if (offsetY <= TL_EDGE_ZONE_PX) return "top";
+        if (offsetY >= rect.height - TL_EDGE_ZONE_PX) return "bottom";
+        return null;
+      };
+      const applyPreview = () => {
+        const sRow = rowOf(pendingStart), eRow = Math.max(sRow + 1, rowOf(pendingStart + pendingDuration));
+        task.style.gridRow = `${sRow} / ${eRow}`;
+      };
+      const clearTimer = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+      const clearHoverHint = () => { task.classList.remove("edge-hover-top", "edge-hover-bottom"); task.style.cursor = ""; };
+
+      const startEditTitle = () => {
+        const titleEl = task.querySelector(".ag-tl-title");
+        if (!titleEl) return;
+        const current = titleEl.textContent;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "inline-add-input";
+        input.value = current;
+        titleEl.replaceWith(input);
+        input.focus(); input.select();
+        let done = false;
+        const commit = async () => {
+          if (done) return;
+          const name = input.value.trim();
+          if (!name || name === current) { renderAgendaTimed(); return; }
+          done = true;
+          const table = kind === "habit" ? "tok_habits" : "tok_events";
+          const field = kind === "habit" ? "name" : "title";
+          const { error } = await sb.from(table).update({ [field]: name }).eq("id", id);
+          if (error) { alert("수정 실패: " + error.message); done = false; return; }
+          await loadAll();
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
+        });
+        input.addEventListener("blur", commit);
+      };
+
+      task.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("input")) return;
+        pressed = true;
+        moved = false; cancelled = false;
+        pendingStart = origStart; pendingDuration = origDuration;
+        startY = e.clientY;
+        edgeAtStart = zoneAt(e.clientY);
+        dragKind = null;
+        task.setPointerCapture?.(e.pointerId);
+
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          if (cancelled) return;
+          dragKind = "move";
+          task.classList.add("dragging");
+          clearHoverHint();
+        }, TL_LONG_PRESS_MS);
+      });
+      task.addEventListener("pointermove", (e) => {
+        if (!pressed) {
+          const zone = zoneAt(e.clientY);
+          task.classList.toggle("edge-hover-top", zone === "top");
+          task.classList.toggle("edge-hover-bottom", zone === "bottom");
+          task.style.cursor = zone ? "ns-resize" : "";
+          return;
+        }
+        const dy = e.clientY - startY;
+        if (dragKind === null) {
+          if (cancelled) return;
+          if (Math.abs(dy) > 6) {
+            clearTimer();
+            if (edgeAtStart) {
+              dragKind = edgeAtStart === "top" ? "resize-top" : "resize-bottom";
+            } else {
+              cancelled = true;
+              return;
+            }
+          } else {
+            return;
+          }
+        }
+        if (Math.abs(dy) > 6) moved = true;
+        if (!moved) return;
+        const deltaMin = Math.round(dy / AG_TL_ROW_PX) * AG_TL_SLOT_MIN;
+        if (dragKind === "move") {
+          let ns = origStart + deltaMin;
+          ns = Math.max(0, Math.min(1440 - origDuration, ns));
+          pendingStart = ns; pendingDuration = origDuration;
+        } else if (dragKind === "resize-top") {
+          let ns = Math.max(0, Math.min(origStart + origDuration - AG_TL_SLOT_MIN, origStart + deltaMin));
+          pendingStart = ns; pendingDuration = (origStart + origDuration) - ns;
+        } else {
+          let nd = Math.max(AG_TL_SLOT_MIN, Math.min(1440 - origStart, origDuration + deltaMin));
+          pendingStart = origStart; pendingDuration = nd;
+        }
+        applyPreview();
+      });
+      const finish = async () => {
+        clearTimer();
+        pressed = false;
+        const k = dragKind;
+        dragKind = null;
+        task.classList.remove("dragging");
+        clearHoverHint();
+
+        if (k === null) {
+          if (!cancelled) startEditTitle();
+          return;
+        }
+        if (!moved) return;
+        if (kind === "habit") {
+          const { error } = await sb.from("tok_habits").update({
+            start_minute: pendingStart, duration_minutes: pendingDuration,
+          }).eq("id", id);
+          if (error) { alert((k === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
+        } else {
+          const { error } = await sb.from("tok_events").update({
+            event_time: minutesToHHMM(pendingStart) + ":00",
+          }).eq("id", id);
+          if (error) { alert("이동 실패: " + error.message); }
+        }
+        await loadAll();
+      };
+      task.addEventListener("pointerup", finish);
+      task.addEventListener("pointercancel", () => { clearTimer(); pressed = false; dragKind = null; task.classList.remove("dragging"); clearHoverHint(); });
+      task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
+    });
   }
 
   function wireAgendaHabitChecks() {
