@@ -69,6 +69,24 @@
   .task-row span{font-size:14px;}
   .task-row.done span{color:var(--sub);text-decoration:line-through;}
 
+  /* ── 집 : 목록/타임라인 보기 전환 ── */
+  .view-toggle{display:flex;gap:6px;margin-bottom:10px;}
+  .view-toggle button{flex:1;padding:8px 0;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:13px;color:var(--sub);cursor:pointer;}
+  .view-toggle button.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);font-weight:600;}
+
+  /* ── 집 : 타임라인 보기(30분 그리드) ── */
+  .tl-grid{display:grid;grid-template-columns:44px 1fr;grid-auto-rows:minmax(26px,auto);position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;}
+  .tl-row-label{grid-column:1;font-size:10px;color:var(--sub);text-align:right;padding-right:6px;transform:translateY(-6px);}
+  .tl-row-line{grid-column:2;border-top:1px solid var(--line);}
+  .tl-block{grid-column:2;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;margin:2px 8px;padding:6px 8px;overflow:hidden;}
+  .tl-block-name{font-size:11px;font-weight:700;color:var(--accent);margin-bottom:2px;}
+  .tl-task{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;}
+  .tl-task input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+  .tl-task span{font-size:12px;}
+  .tl-task.done span{color:var(--sub);text-decoration:line-through;}
+  .tl-unassigned{margin-top:10px;}
+  .tl-unassigned .section-label{margin:0 2px 8px;}
+
   /* ── 집 : 언젠가 할일 ── */
   .someday-add-row{display:flex;gap:6px;margin-bottom:8px;}
   .someday-add-row input{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;}
@@ -154,7 +172,11 @@
         <div class="card" id="upcomingCard"></div>
         <div id="upcomingEmpty" class="empty" style="display:none;padding:16px 0;">다가오는 일정이 없어요.</div>
 
-        <div class="section-label">🕒 오늘의 타임라인</div>
+        <div class="section-label">🕒 오늘의 할일</div>
+        <div class="view-toggle">
+          <button id="viewListBtn" class="active">목록</button>
+          <button id="viewTimelineBtn">타임라인</button>
+        </div>
         <div id="timelineWrap"></div>
         <div id="homeEmpty" class="empty" style="display:none;">아직 등록한 할일이 없어요.<br/>'할일' 탭에서 먼저 추가해보세요.</div>
 
@@ -243,6 +265,7 @@
   let timeBlocks = [];
   let somedayItems = [];
   let currentPage = "home";
+  let homeView = "list"; // "list" | "timeline"
 
   // ── 인증 ──
   $("loginBtn").onclick = async () => {
@@ -336,7 +359,7 @@
     `).join("");
   }
 
-  // ── 집 : 타임라인(시간블럭별 할일) ──
+  // ── 집 : 오늘의 할일 (목록/타임라인 보기 전환) ──
   function renderHome() {
     renderProgress();
     renderUpcoming();
@@ -344,6 +367,17 @@
     const active = tasks.filter(t => t.is_active);
     $("homeEmpty").style.display = active.length ? "none" : "block";
 
+    if (homeView === "timeline") renderHomeTimeline(active);
+    else renderHomeList(active);
+
+    document.querySelectorAll(".home-check").forEach(cb => {
+      cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
+    });
+
+    renderSomeday();
+  }
+
+  function groupTasksByBlock(active) {
     const byBlock = new Map();
     const unassigned = [];
     active.forEach(t => {
@@ -354,7 +388,12 @@
         unassigned.push(t);
       }
     });
+    return { byBlock, unassigned };
+  }
 
+  // 목록 보기: 시간블럭별로 섹션을 나눠 세로로 나열 (기존 방식)
+  function renderHomeList(active) {
+    const { byBlock, unassigned } = groupTasksByBlock(active);
     const groups = [];
     timeBlocks.forEach(b => {
       const list = byBlock.get(b.id) || [];
@@ -379,13 +418,72 @@
         </div>
       </div>
     `).join("");
+  }
 
-    document.querySelectorAll(".home-check").forEach(cb => {
-      cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
+  // 타임라인 보기: 30분 단위 눈금 위에 시간블럭을 그 시간 구간만큼 띠로 표시 (드래그는 다음 단계)
+  const TL_SLOT_MIN = 30;
+  function renderHomeTimeline(active) {
+    const { byBlock, unassigned } = groupTasksByBlock(active);
+
+    let minM = 360, maxM = 1440; // 기본 06:00~24:00
+    timeBlocks.forEach(b => { minM = Math.min(minM, b.start_minute); maxM = Math.max(maxM, b.end_minute); });
+    const slotCount = Math.max(1, Math.ceil((maxM - minM) / TL_SLOT_MIN));
+
+    let rowsHtml = "";
+    for (let i = 0; i < slotCount; i++) {
+      const m = minM + i * TL_SLOT_MIN;
+      const label = (m % 60 === 0) ? minutesToHHMM(m) : "";
+      rowsHtml += `<div class="tl-row-label" style="grid-row:${i+1}">${label}</div>`;
+      rowsHtml += `<div class="tl-row-line" style="grid-row:${i+1}"></div>`;
+    }
+
+    let blocksHtml = "";
+    timeBlocks.forEach(b => {
+      const startRow = Math.floor((b.start_minute - minM) / TL_SLOT_MIN) + 1;
+      const endRow = Math.max(startRow + 1, Math.floor((b.end_minute - minM) / TL_SLOT_MIN) + 1);
+      const items = byBlock.get(b.id) || [];
+      blocksHtml += `
+        <div class="tl-block" style="grid-row:${startRow} / ${endRow}">
+          <div class="tl-block-name">${escapeHtml(b.title)}</div>
+          ${items.map(t => {
+            const done = logsToday.has(t.id);
+            return `<div class="tl-task ${done?'done':''}">
+              <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
+              <span>${escapeHtml(t.name)}</span>
+            </div>`;
+          }).join("")}
+        </div>`;
     });
 
-    renderSomeday();
+    const unassignedHtml = unassigned.length ? `
+      <div class="tl-unassigned">
+        <div class="section-label">미분류</div>
+        <div class="card">
+          ${unassigned.map(t => {
+            const done = logsToday.has(t.id);
+            return `<div class="task-row ${done?'done':''}">
+              <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
+              <span>${escapeHtml(t.name)}</span>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>` : "";
+
+    $("timelineWrap").innerHTML = `<div class="tl-grid">${rowsHtml}${blocksHtml}</div>${unassignedHtml}`;
   }
+
+  $("viewListBtn").onclick = () => {
+    homeView = "list";
+    $("viewListBtn").classList.add("active");
+    $("viewTimelineBtn").classList.remove("active");
+    renderHome();
+  };
+  $("viewTimelineBtn").onclick = () => {
+    homeView = "timeline";
+    $("viewTimelineBtn").classList.add("active");
+    $("viewListBtn").classList.remove("active");
+    renderHome();
+  };
 
   async function toggleToday(taskId, checked) {
     if (checked) {
