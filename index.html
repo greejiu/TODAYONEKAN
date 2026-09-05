@@ -106,6 +106,13 @@
   .tl-inline-add{padding:0 4px;}
   .tl-inline-add .inline-add-input{padding:2px 6px;font-size:12px;}
 
+  /* ── 클릭=수정, 오른쪽클릭=삭제 메뉴 ── */
+  .todo-row .name, .event-row .title, .someday-title, .plan-row.todo .plan-todo-title{cursor:pointer;}
+  .todo-row .name:hover, .event-row .title:hover, .someday-title:hover, .plan-row.todo .plan-todo-title:hover{color:var(--accent);}
+  .ctx-menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:4px;z-index:30;}
+  .ctx-menu button{display:block;width:100%;padding:8px 16px;border:none;background:none;color:var(--danger);font-size:13px;text-align:left;cursor:pointer;border-radius:6px;white-space:nowrap;}
+  .ctx-menu button:hover{background:var(--bg);}
+
   /* ── 집 : 2열 레이아웃 (1열 습관 실행, 2열 다가오는 계획+언젠가 할일) ── */
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
   .home-col{min-width:0;}
@@ -652,7 +659,7 @@
       }).join("") : "";
       const todoHtml = dayTodos.map(td => {
         const isRange = td.end_date && td.end_date !== td.start_date;
-        return `<div class="plan-row todo ${td.is_done?'done':''}">
+        return `<div class="plan-row todo ${td.is_done?'done':''}" data-id="${td.id}">
           <input type="checkbox" ${td.is_done?"checked":""} data-id="${td.id}" class="plan-todo-check" />
           <span class="plan-todo-title">${escapeHtml(td.title)}</span>
           ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
@@ -681,6 +688,26 @@
         openTodoSheet(todos.find(t => t.id === btn.dataset.id));
       };
     });
+    // 클릭 → 수정(연필 아이콘과 동일하게 수정 시트가 열림. 날짜 두 개를 같이 바꿔야 해서 인라인 대신 시트 유지)
+    document.querySelectorAll(".plan-row.todo .plan-todo-title").forEach(titleEl => {
+      titleEl.onclick = (e) => {
+        e.stopPropagation();
+        const id = titleEl.closest(".plan-row").dataset.id;
+        openTodoSheet(todos.find(t => t.id === id));
+      };
+    });
+    // 오른쪽 클릭 → 삭제 메뉴
+    document.querySelectorAll(".plan-row.todo").forEach(row => {
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showDeleteMenu(e.clientX, e.clientY, async () => {
+          if (!confirm("이 할일을 삭제할까요?")) return;
+          const { error } = await sb.from("tok_todos").delete().eq("id", row.dataset.id);
+          if (error) { alert("삭제 실패: " + error.message); return; }
+          await loadAll();
+        });
+      };
+    });
 
     attachPlanBoardDrag(days);
   }
@@ -704,7 +731,7 @@
     const clearHighlight = () => document.querySelectorAll(".plan-day").forEach(el => el.classList.remove("drag-hi"));
 
     board.onpointerdown = (e) => {
-      if (e.target.closest(".plan-todo-check") || e.target.closest(".plan-todo-edit") || e.target.closest(".home-check")) return;
+      if (e.target.closest(".plan-todo-check") || e.target.closest(".plan-todo-edit") || e.target.closest(".plan-todo-title") || e.target.closest(".home-check")) return;
       const dayEl = e.target.closest(".plan-day");
       if (!dayEl) return;
       const startIdx = parseInt(dayEl.dataset.idx, 10);
@@ -830,9 +857,9 @@
   function renderSomeday() {
     const sorted = [...somedayItems].sort((a, b) => (a.is_done === b.is_done) ? 0 : (a.is_done ? 1 : -1));
     $("somedayList").innerHTML = sorted.map(item => `
-      <div class="someday-row ${item.is_done?'done':''}">
+      <div class="someday-row ${item.is_done?'done':''}" data-id="${item.id}">
         <input type="checkbox" ${item.is_done?"checked":""} data-id="${item.id}" class="someday-check" />
-        <span>${escapeHtml(item.title)}</span>
+        <span class="someday-title">${escapeHtml(item.title)}</span>
         <button class="del" data-id="${item.id}">삭제</button>
       </div>
     `).join("");
@@ -851,6 +878,49 @@
         if (error) { alert("삭제 실패: " + error.message); return; }
         somedayItems = somedayItems.filter(s => s.id !== btn.dataset.id);
         renderSomeday();
+      };
+    });
+
+    // 클릭 → 제목 인라인 수정
+    document.querySelectorAll(".someday-title").forEach(titleEl => {
+      titleEl.onclick = () => {
+        const id = titleEl.closest(".someday-row").dataset.id;
+        const current = titleEl.textContent;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "inline-add-input";
+        input.value = current;
+        titleEl.replaceWith(input);
+        input.focus(); input.select();
+        let done = false;
+        const commit = async () => {
+          if (done) return;
+          const title = input.value.trim();
+          if (!title || title === current) { renderSomeday(); return; }
+          done = true;
+          const { error } = await sb.from("tok_someday").update({ title }).eq("id", id);
+          if (error) { alert("수정 실패: " + error.message); done = false; return; }
+          const item = somedayItems.find(s => s.id === id);
+          if (item) item.title = title;
+          renderSomeday();
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { done = true; renderSomeday(); }
+        });
+        input.addEventListener("blur", commit);
+      };
+    });
+    // 오른쪽 클릭 → 삭제 메뉴
+    document.querySelectorAll(".someday-row").forEach(row => {
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showDeleteMenu(e.clientX, e.clientY, async () => {
+          const { error } = await sb.from("tok_someday").delete().eq("id", row.dataset.id);
+          if (error) { alert("삭제 실패: " + error.message); return; }
+          somedayItems = somedayItems.filter(s => s.id !== row.dataset.id);
+          renderSomeday();
+        });
       };
     });
   }
@@ -878,7 +948,7 @@
         <div class="day-label">${formatDate(d)}</div>
         <div class="card">
           ${groups[d].map(e => `
-            <div class="event-row">
+            <div class="event-row" data-id="${e.id}">
               <div class="t">${e.event_time ? e.event_time.slice(0,5) : ""}</div>
               <div class="body">
                 <div class="title">${escapeHtml(e.title)}</div>
@@ -895,6 +965,47 @@
         const { error } = await sb.from("tok_events").delete().eq("id", btn.dataset.id);
         if (error) { alert("삭제 실패: " + error.message); return; }
         await loadAll();
+      };
+    });
+
+    // 클릭 → 제목 인라인 수정
+    document.querySelectorAll("#scheduleList .title").forEach(titleEl => {
+      titleEl.onclick = () => {
+        const id = titleEl.closest(".event-row").dataset.id;
+        const current = titleEl.textContent;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "inline-add-input";
+        input.value = current;
+        titleEl.replaceWith(input);
+        input.focus(); input.select();
+        let done = false;
+        const commit = async () => {
+          if (done) return;
+          const title = input.value.trim();
+          if (!title || title === current) { renderSchedule(); return; }
+          done = true;
+          const { error } = await sb.from("tok_events").update({ title }).eq("id", id);
+          if (error) { alert("수정 실패: " + error.message); done = false; return; }
+          await loadAll();
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { done = true; renderSchedule(); }
+        });
+        input.addEventListener("blur", commit);
+      };
+    });
+    // 오른쪽 클릭 → 삭제 메뉴
+    document.querySelectorAll("#scheduleList .event-row").forEach(row => {
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showDeleteMenu(e.clientX, e.clientY, async () => {
+          if (!confirm("이 일정을 삭제할까요?")) return;
+          const { error } = await sb.from("tok_events").delete().eq("id", row.dataset.id);
+          if (error) { alert("삭제 실패: " + error.message); return; }
+          await loadAll();
+        });
       };
     });
   }
@@ -915,7 +1026,7 @@
   function renderTodo() {
     $("todoEmpty").style.display = tasks.length ? "none" : "block";
     $("todoList").innerHTML = tasks.map(t => `
-      <div class="todo-row ${t.is_active?"":"inactive"}">
+      <div class="todo-row ${t.is_active?"":"inactive"}" data-id="${t.id}">
         <div class="info">
           <div class="name">${escapeHtml(t.name)}</div>
           <div class="block-tag">${t.start_minute != null ? minutesToHHMM(t.start_minute) : "시간 없음"} · ${t.duration_minutes || 30}분</div>
@@ -938,6 +1049,47 @@
         const { error } = await sb.from("tok_habits").delete().eq("id", btn.dataset.id);
         if (error) { alert("삭제 실패: " + error.message); return; }
         await loadAll();
+      };
+    });
+
+    // 클릭 → 이름 인라인 수정
+    document.querySelectorAll("#todoList .name").forEach(nameEl => {
+      nameEl.onclick = () => {
+        const id = nameEl.closest(".todo-row").dataset.id;
+        const current = nameEl.textContent;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "inline-add-input";
+        input.value = current;
+        nameEl.replaceWith(input);
+        input.focus(); input.select();
+        let done = false;
+        const commit = async () => {
+          if (done) return;
+          const name = input.value.trim();
+          if (!name || name === current) { renderTodo(); return; }
+          done = true;
+          const { error } = await sb.from("tok_habits").update({ name }).eq("id", id);
+          if (error) { alert("수정 실패: " + error.message); done = false; return; }
+          await loadAll();
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { done = true; renderTodo(); }
+        });
+        input.addEventListener("blur", commit);
+      };
+    });
+    // 오른쪽 클릭 → 삭제 메뉴
+    document.querySelectorAll("#todoList .todo-row").forEach(row => {
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showDeleteMenu(e.clientX, e.clientY, async () => {
+          if (!confirm("이 습관을 삭제할까요? (기록도 함께 삭제돼요)")) return;
+          const { error } = await sb.from("tok_habits").delete().eq("id", row.dataset.id);
+          if (error) { alert("삭제 실패: " + error.message); return; }
+          await loadAll();
+        });
       };
     });
   }
@@ -973,6 +1125,33 @@
   $("tk_name").addEventListener("keydown", (e) => { if (e.key === "Enter") $("taskAddBtn").click(); });
 
   function escapeHtml(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+  // 오른쪽 클릭(→ PC 관리 메뉴) 공통 헬퍼: 커서 위치에 "삭제" 한 줄짜리 메뉴를 띄움
+  function showDeleteMenu(x, y, onDelete) {
+    document.querySelector(".ctx-menu")?.remove();
+    const menu = document.createElement("div");
+    menu.className = "ctx-menu";
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+    menu.innerHTML = `<button type="button">삭제</button>`;
+    document.body.appendChild(menu);
+    menu.querySelector("button").onclick = async (e) => {
+      e.stopPropagation();
+      menu.remove();
+      await onDelete();
+    };
+    setTimeout(() => {
+      const closeOnOutside = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          document.removeEventListener("click", closeOnOutside);
+          document.removeEventListener("contextmenu", closeOnOutside);
+        }
+      };
+      document.addEventListener("click", closeOnOutside);
+      document.addEventListener("contextmenu", closeOnOutside);
+    }, 0);
+  }
 
   boot();
 </script>
