@@ -159,7 +159,10 @@
 
   /* ── 집 : 2열 레이아웃 (1열 습관 실행, 2열 다가오는 계획+언젠가 할일) ── */
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
-  .home-col{min-width:0;}
+  .home-col{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 6px 20px rgba(150,130,200,.08);}
+  .home-col-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+  .home-col-head .title{font-size:13px;font-weight:700;color:var(--text);}
+  .home-col-head .hint{font-size:11px;color:var(--sub);}
   @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
 
   /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
@@ -207,8 +210,10 @@
   /* ── 집 : 다가오는 계획 (7일 보드, 습관 탭의 #planBoard와는 별도 인스턴스) ── */
   .planup-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
   .planup-day:last-child{border-bottom:none;}
+  .plan-time{font-size:11px;color:var(--accent);font-weight:700;flex-shrink:0;}
+  .planup-day:last-child{border-bottom:none;}
   .planup-day.drag-hi{background:var(--accent-soft);border-radius:8px;}
-  .planup-day-label{font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px;}
+  .planup-day-label{font-size:12px;color:var(--text);font-weight:700;margin-bottom:4px;}
   .planup-day-body{display:flex;flex-direction:column;gap:4px;}
   .planup-day-empty{font-size:12px;color:var(--sub);opacity:.5;padding:4px 0;}
 
@@ -404,14 +409,19 @@
           </div>
 
           <div class="home-col">
-            <div class="section-label">🗓 다가오는 계획</div>
-            <div class="card" id="planUpcomingBoard"></div>
+            <div class="home-col-head">
+              <span class="title">🗓 다가오는 계획</span>
+              <span class="hint">앞으로 7일</span>
+            </div>
+            <div id="planUpcomingBoard"></div>
           </div>
 
           <div class="home-col">
-            <div class="section-label">💭 언젠가</div>
+            <div class="home-col-head">
+              <span class="title">💭 언젠가</span>
+            </div>
             <div id="somedayZone">
-              <div class="card" id="somedaySummaryList"></div>
+              <div id="somedaySummaryList"></div>
               <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
             </div>
           </div>
@@ -1080,6 +1090,8 @@
     "밤": { dot: "#7d8cd6", icon: "🌙" },
   };
   function agBlockStyle(title) { return AG_BLOCK_STYLE[title] || { dot: "var(--accent)", icon: "🕐" }; }
+  // 다가오는 계획 각 날짜 점 색상(장식용, 항목 있는 날만 색이 돌아가며 붙고 빈 날은 회색)
+  const PLAN_DAY_DOTS = ["#4a90e2", "#f5a742", "#a56cf0", "#3fae6a", "#e2678a"];
   function agCheckWrap(inner) { return `<span class="agenda-check-wrap">${inner}<span class="agenda-check-mark">✓</span></span>`; }
 
   // "하루종일": 그 날짜에 걸친 할일(시간 없음) + 시간 없는 일정 + 시간 없는 습관
@@ -1708,21 +1720,24 @@
         </div>`).join("");
       const eventHtml = dayEvents.map(e => `
         <div class="plan-row planup-drag-row" data-id="${e.id}" data-kind="event">
-          <span class="plan-todo-title">📅 ${e.event_time ? e.event_time.slice(0, 5) + " " : ""}${escapeHtml(e.title)}</span>
+          <span class="plan-todo-title">${escapeHtml(e.title)}</span>
+          ${e.event_time ? `<span class="plan-time">${e.event_time.slice(0, 5)}</span>` : ""}
         </div>`).join("");
       const todoHtml = dayTodos.map(td => {
         const isRange = td.end_date && td.end_date !== td.start_date;
         return `<div class="plan-row todo ${isRange ? "" : "planup-drag-row"}" data-id="${td.id}" data-kind="todo">
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
-          <span class="plan-todo-title planup-todo-title">${td.todo_time ? td.todo_time.slice(0, 5) + " " : ""}${escapeHtml(td.title)}</span>
-          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
+          <span class="plan-todo-title planup-todo-title">${escapeHtml(td.title)}</span>
+          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : td.todo_time ? `<span class="plan-time">${td.todo_time.slice(0, 5)}</span>` : ""}
           <button class="planup-todo-edit" data-id="${td.id}">✎</button>
         </div>`;
       }).join("");
       const bodyHtml = habitHtml + eventHtml + todoHtml;
+      const hasItems = !!(dayHabits.length || dayEvents.length || dayTodos.length);
+      const dotColor = hasItems ? PLAN_DAY_DOTS[idx % PLAN_DAY_DOTS.length] : "#c7c2d6";
       return `<div class="planup-day" data-idx="${idx}" data-date="${dateStr}">
-        <div class="planup-day-label">${formatDateShort(dateStr)}</div>
-        <div class="planup-day-body">${bodyHtml || '<div class="planup-day-empty">+ 추가</div>'}</div>
+        <div class="planup-day-label"><span class="ag-dot" style="background:${dotColor};"></span>${formatDateShort(dateStr)}</div>
+        <div class="planup-day-body">${bodyHtml || '<div class="planup-day-empty">🍃 등록된 일정이 없어요. 가볍게 쉬어가요!</div>'}</div>
       </div>`;
     }).join("");
 
