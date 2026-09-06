@@ -1242,8 +1242,11 @@
           <span class="agenda-tag kind-todo">할일</span>
         </div>`),
     ];
-    $("agendaAllDayList").innerHTML = (rows.length ? rows.join("") : `<div class="agenda-empty-block">하루종일 항목이 없어요.</div>`)
-      + `<div class="block-add-row" data-alladd="1">+ 추가</div>`;
+    // 비어있을 땐 안내문구 자체가 곧 클릭해서 추가하는 빈칸(안내문+추가버튼 따로 안 두고 하나로 합침),
+    // 이미 항목이 있으면 그 아래에 "+ 추가" 줄만 따로 붙여서 더 추가할 수 있게 함.
+    $("agendaAllDayList").innerHTML = rows.length
+      ? rows.join("") + `<div class="block-add-row" data-alladd="1">+ 추가</div>`
+      : `<div class="agenda-empty-block block-add-row" data-alladd="1">하루종일 항목이 없어요. 눌러서 추가</div>`;
     const allDayCountEl = $("agendaAllDayCount");
     if (allDayCountEl) {
       allDayCountEl.style.display = rows.length ? "inline-block" : "none";
@@ -2914,7 +2917,7 @@
     return events.find(e => e.id === id);
   }
 
-  // 집 화면 항목 오른쪽 클릭 메뉴: 날짜 변경 / 태그·범주 변경 / 삭제 (습관·할일·일정 공용, 일단 이 3개만)
+  // 집 화면 항목 오른쪽 클릭 메뉴: 날짜 변경 / 태그·범주 변경 / (반복 할일↔습관 전환) / 삭제 (습관·할일·일정 공용)
   function showAgendaItemMenu(x, y, kind, id) {
     document.querySelector(".ctx-menu")?.remove();
     const menu = document.createElement("div");
@@ -2922,9 +2925,15 @@
     menu.style.left = x + "px";
     menu.style.top = y + "px";
     const tagLabel = kind === "event" ? "범주 변경" : "태그 변경";
+    const item = agendaItemById(kind, id);
+    // 반복 할일 ↔ 습관 전환: 할일은 반복설정 돼있을 때만(일회성 할일은 대상 아님), 습관은 원래 반복 개념이라 항상 대상.
+    let convertBtn = "";
+    if (kind === "todo" && item?.repeat_unit) convertBtn = `<button type="button" class="default" data-act="convert">습관으로 바꾸기</button>`;
+    else if (kind === "habit") convertBtn = `<button type="button" class="default" data-act="convert">할일로 바꾸기</button>`;
     menu.innerHTML = `
       <button type="button" class="default" data-act="date">날짜 변경</button>
       <button type="button" class="default" data-act="tag">${tagLabel}</button>
+      ${convertBtn}
       <button type="button" data-act="delete">삭제</button>
     `;
     document.body.appendChild(menu);
@@ -2936,9 +2945,16 @@
       e.stopPropagation(); menu.remove();
       showItemTagPicker(x, y, kind, id);
     };
+    const convertEl = menu.querySelector('[data-act="convert"]');
+    if (convertEl) {
+      convertEl.onclick = async (e) => {
+        e.stopPropagation(); menu.remove();
+        if (kind === "todo") await convertTodoToHabit(id);
+        else await convertHabitToTodo(id);
+      };
+    }
     menu.querySelector('[data-act="delete"]').onclick = async (e) => {
       e.stopPropagation(); menu.remove();
-      const item = agendaItemById(kind, id);
       const label = item ? (item.name || item.title || "이 항목") : "이 항목";
       if (!confirm(`"${label}"을(를) 삭제할까요?`)) return;
       const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
@@ -2947,6 +2963,47 @@
       await loadAll();
     };
     attachCtxMenuOutsideClose(menu);
+  }
+
+  // 반복 할일 → 습관 전환: 새 습관으로 만들고 기존 할일 행은 삭제(진행 중인 이 회차만 바뀜, 이미 지나간
+  // 완료 기록들은 별개의 할일 행으로 그대로 남아있어 영향 없음). 하위 행동이 있으면 같이 사라짐(습관엔 그 개념이 없어서).
+  async function convertTodoToHabit(id) {
+    const t = todos.find(x => x.id === id);
+    if (!t) return;
+    const subCount = todoSubtasks.filter(s => s.todo_id === id).length;
+    const warn = subCount ? ` 하위 행동 ${subCount}개도 함께 사라져요.` : "";
+    if (!confirm(`"${t.title}"을(를) 습관으로 바꿀까요?${warn}`)) return;
+    const startMinute = t.todo_time ? hhmmToMinutes(t.todo_time.slice(0, 5)) : null;
+    const { error: insErr } = await sb.from("tok_habits").insert({
+      name: t.title, category_id: t.tag_id || null,
+      repeat_unit: t.repeat_unit, repeat_interval: t.repeat_interval,
+      start_minute: startMinute, duration_minutes: t.duration_minutes || 30,
+    });
+    if (insErr) { alert("전환 실패: " + insErr.message); return; }
+    const { error: delErr } = await sb.from("tok_todos").delete().eq("id", id);
+    if (delErr) { alert("전환 중 기존 할일 삭제 실패: " + delErr.message); return; }
+    await loadAll();
+  }
+
+  // 습관 → 반복 할일 전환: 새 할일로 만들고 기존 습관 행은 삭제 — 습관의 완료 기록(tok_habit_logs)은
+  // 습관이 삭제되면 함께 사라지므로(되돌릴 수 없음) 미리 개수를 보여주고 확인받음.
+  async function convertHabitToTodo(id) {
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const logCount = habitLogs.filter(l => l.habit_id === id).length;
+    const warn = logCount ? ` 지금까지의 완료 기록 ${logCount}개가 사라지고 되돌릴 수 없어요.` : "";
+    if (!confirm(`"${t.name}"을(를) 할일로 바꿀까요?${warn}`)) return;
+    const todo_time = t.start_minute != null ? minutesToHHMM(t.start_minute) + ":00" : null;
+    const { error: insErr } = await sb.from("tok_todos").insert({
+      title: t.name, tag_id: t.category_id || null,
+      repeat_unit: t.repeat_unit, repeat_interval: t.repeat_interval,
+      start_date: homeAgendaDate, end_date: null,
+      todo_time, duration_minutes: t.duration_minutes || null,
+    });
+    if (insErr) { alert("전환 실패: " + insErr.message); return; }
+    const { error: delErr } = await sb.from("tok_habits").delete().eq("id", id);
+    if (delErr) { alert("전환 중 기존 습관 삭제 실패: " + delErr.message); return; }
+    await loadAll();
   }
 
   // 태그/범주 변경용 작은 선택 메뉴(ctx-menu 재사용) — 습관·할일은 공용 태그 풀, 일정은 별도 범주 풀에서 고름
