@@ -85,13 +85,13 @@
   /* ── 집 : 목록/타임라인 보기 전환 ── */
   .view-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
   .view-toggle-row .view-toggle{flex:none;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:3px;gap:8px;}
-  .view-toggle-row .view-toggle button{border:none;background:transparent;border-radius:11px;color:var(--sub);padding:8px 14px;}
+  .view-toggle-row .view-toggle button{border:none;background:transparent;border-radius:11px;color:var(--sub);padding:5px 14px;font-size:13px;}
   .view-toggle-row .view-toggle button.active{background:var(--card);color:var(--accent);box-shadow:0 1px 5px rgba(150,130,200,.18);}
   .view-toggle{display:flex;gap:6px;flex:1;}
   .view-toggle button{flex:1;padding:8px 0;border:1px solid var(--line);background:#fff;border-radius:12px;font-size:13px;color:var(--sub);cursor:pointer;}
   .view-toggle button.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);font-weight:600;}
-  .today-btn{flex:none;padding:8px 16px;border:1px solid #ffd9e6;background:#ffeef4;border-radius:999px;font-size:13px;color:#c9457a;font-weight:700;cursor:pointer;}
-  .today-btn:hover{background:#ffe0ec;}
+  .today-btn{flex:none;padding:8px 16px;border:none;background:var(--accent-soft);border-radius:999px;font-size:13px;color:var(--accent);font-weight:700;cursor:pointer;}
+  .today-btn:hover{background:color-mix(in srgb, var(--accent) 15%, var(--accent-soft));}
   /* ── 오늘 열 : 하루종일 + 타임블럭(사용자 스크린샷 시안 참고 — 항목별 둥근 카드형) ── */
   .agenda-flat{display:flex;flex-direction:column;}
   .agenda-row-empty{min-height:34px;border-bottom:1px solid var(--line);}
@@ -166,7 +166,7 @@
   .home-col-head{margin-bottom:10px;}
   .home-col-head .title{font-size:13px;font-weight:700;color:var(--text);text-align:center;}
   .home-col-head .hint-row{display:flex;justify-content:flex-end;margin-top:6px;}
-  .home-col-head .hint{font-size:11px;color:var(--accent);background:var(--accent-soft);font-weight:700;padding:3px 10px;border-radius:999px;}
+  .home-col-head .hint{font-size:13px;color:var(--accent);background:var(--accent-soft);font-weight:700;padding:8px 14px;border-radius:999px;}
   @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
 
   /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
@@ -396,7 +396,7 @@
                 <button id="agendaViewBlockBtn" class="active">타임블럭</button>
                 <button id="agendaViewTimelineBtn">타임라인</button>
               </div>
-              <button id="agendaTodayBtn" class="today-btn">오늘 🌸</button>
+              <button id="agendaTodayBtn" class="today-btn">오늘</button>
             </div>
 
             <div class="ag-section-head" style="margin-top:10px;">
