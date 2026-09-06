@@ -758,11 +758,60 @@
     habitCategories = habitCatData || [];
     todoSubtasks = subtaskData || []; // tok_todo_subtasks: 지금 할일 카드의 하위 행동
     eventCategories = eventCatData || [];
+    await advancePastRepeatingEvents(events); // 반복 설정된 일정 중 날짜 지난 것은 다음 회차로 자동 이동
     renderHome();
     renderSchedule();
     renderTodosPage();
     renderTodo();
     renderSettingsTagLists();
+  }
+
+  // ── 할일·일정 반복 (2026-09-06 추가): 습관과 같은 방식으로 통일하되, 트리거는 종류별로 다름 ──
+  // 할일: 체크(완료)해야 다음 회차가 생김(습관과 동일 — 안 하면 계속 그대로 남아있음, 자동으로 안 사라짐).
+  //       완료된 회차 자체는 기록으로 그대로 남고, 다음 회차는 새 행으로 하나 생성됨(onekan v1 방식 참고).
+  // 일정: 완료 개념이 없어서 "날짜가 지나면" 트리거 — 새 행을 만들지 않고 그 일정 자체의 날짜를 다음 회차로 옮김(기록 없음).
+  async function completeTodoRepeatIfNeeded(todo) {
+    if (!todo || !todo.repeat_unit) return;
+    const nextStart = nextRepeatDateStr(todo.start_date, todo.repeat_unit, todo.repeat_interval);
+    const isRange = todo.end_date && todo.end_date !== todo.start_date;
+    let nextEnd = null;
+    if (isRange) {
+      const spanDays = Math.round((new Date(todo.end_date + "T00:00:00") - new Date(todo.start_date + "T00:00:00")) / 86400000);
+      nextEnd = addDaysStr(nextStart, spanDays);
+    }
+    const { error } = await sb.from("tok_todos").insert({
+      title: todo.title, start_date: nextStart, end_date: nextEnd,
+      todo_time: todo.todo_time || null, duration_minutes: todo.duration_minutes || null,
+      tag_id: todo.tag_id || null, repeat_unit: todo.repeat_unit, repeat_interval: todo.repeat_interval,
+    });
+    if (error) alert("다음 회차 생성 실패: " + error.message);
+  }
+  // 할일 완료 체크를 처리하는 공용 함수 — 반복이면 다음 회차 생성 후 전체 새로고침, 아니면 가벼운 렌더만.
+  // 반환값 true = 이미 loadAll()로 전체 갱신했으니 호출부에서 추가로 렌더할 필요 없음.
+  async function setTodoDone(id, checked) {
+    const { error } = await sb.from("tok_todos").update({ is_done: checked }).eq("id", id);
+    if (error) { alert("변경 실패: " + error.message); return false; }
+    const t = todos.find(x => x.id === id);
+    if (t) t.is_done = checked;
+    if (checked && t && t.repeat_unit) {
+      await completeTodoRepeatIfNeeded(t);
+      await loadAll();
+      return true;
+    }
+    return false;
+  }
+  // 일정은 완료 개념이 없어 "날짜가 지났는지"로 트리거 — 지난 반복 일정은 다음 회차 날짜로 그 자리에서 이동시킴(새 행 생성 X)
+  async function advancePastRepeatingEvents(eventList) {
+    const today = todayStr();
+    for (const e of eventList) {
+      if (!e.repeat_unit || e.event_date >= today) continue;
+      let next = e.event_date, guard = 0;
+      while (next < today && guard < 1000) { next = nextRepeatDateStr(next, e.repeat_unit, e.repeat_interval); guard++; }
+      if (next !== e.event_date) {
+        const { error } = await sb.from("tok_events").update({ event_date: next }).eq("id", e.id);
+        if (!error) e.event_date = next;
+      }
+    }
   }
 
   // ── 집 : 지금 할 일 카드(onekan v1의 focus-task-card 참고, 할일 1개를 하위 행동으로 쪼개기) ──
@@ -943,6 +992,7 @@
         const t = todos.find(x => x.id === step.todo_id);
         if (t) t.is_done = true;
         if (manualFocusTodoId === step.todo_id) manualFocusTodoId = null;
+        if (t && t.repeat_unit) await completeTodoRepeatIfNeeded(t);
         await loadAll();
         return;
       }
@@ -989,6 +1039,13 @@
     const ny = Math.floor(total / 12), nm = total % 12; // nm: 0~11
     const lastDay = new Date(ny, nm + 1, 0).getDate();
     return `${ny}-${pad2(nm + 1)}-${pad2(Math.min(d, lastDay))}`;
+  }
+  // 할일·일정 반복에도 재사용하는 공용 "다음 날짜" 계산(습관과 같은 일/주/개월 규칙, 월은 말일 보정)
+  function nextRepeatDateStr(dateStr, repeatUnit, repeatInterval) {
+    const interval = repeatInterval || 1;
+    if (repeatUnit === "week") return addDaysStr(dateStr, interval * 7);
+    if (repeatUnit === "month") return addMonthsStr(dateStr, interval);
+    return addDaysStr(dateStr, interval); // "day"
   }
   // dateStr 이전(그 날짜 포함 안 함) 중 가장 최근 완료일
   function habitLastDoneBefore(habitId, dateStr) {
@@ -1168,10 +1225,8 @@
 
     document.querySelectorAll(".agenda-todo-check").forEach(cb => {
       cb.onchange = async () => {
-        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
-        if (error) { alert("변경 실패: " + error.message); return; }
-        const t = todos.find(x => x.id === cb.dataset.id);
-        if (t) t.is_done = cb.checked;
+        const reloaded = await setTodoDone(cb.dataset.id, cb.checked);
+        if (reloaded) return;
         renderAgendaAllDay();
         renderPlanUpcomingBoard();
       };
@@ -1848,10 +1903,8 @@
     });
     document.querySelectorAll(".ag-todo-check").forEach(cb => {
       cb.onchange = async () => {
-        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
-        if (error) { alert("변경 실패: " + error.message); return; }
-        const t = todos.find(x => x.id === cb.dataset.id);
-        if (t) t.is_done = cb.checked;
+        const reloaded = await setTodoDone(cb.dataset.id, cb.checked);
+        if (reloaded) return;
         renderAgendaTimed();
         renderPlanUpcomingBoard();
       };
@@ -1941,10 +1994,8 @@
     });
     document.querySelectorAll(".planup-todo-check").forEach(cb => {
       cb.onchange = async () => {
-        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
-        if (error) { alert("변경 실패: " + error.message); return; }
-        const t = todos.find(x => x.id === cb.dataset.id);
-        if (t) t.is_done = cb.checked;
+        const reloaded = await setTodoDone(cb.dataset.id, cb.checked);
+        if (reloaded) return;
         renderPlanUpcomingBoard();
       };
     });
@@ -2185,10 +2236,8 @@
 
     document.querySelectorAll(".plan-todo-check").forEach(cb => {
       cb.onchange = async () => {
-        const { error } = await sb.from("tok_todos").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
-        if (error) { alert("변경 실패: " + error.message); return; }
-        const t = todos.find(x => x.id === cb.dataset.id);
-        if (t) t.is_done = cb.checked;
+        const reloaded = await setTodoDone(cb.dataset.id, cb.checked);
+        if (reloaded) return;
         renderPlanBoard();
       };
     });
@@ -2850,11 +2899,13 @@
     $("idt_title").textContent = (kind === "habit" ? "습관" : kind === "todo" ? "할일" : "일정") + " 날짜/시간 변경";
     $("idt_date_row").style.display = (kind === "todo" || kind === "event") ? "flex" : "none";
     $("idt_end_wrap").style.display = kind === "todo" ? "block" : "none";
-    $("idt_repeat_row").style.display = kind === "habit" ? "flex" : "none";
+    $("idt_repeat_row").style.display = "flex"; // 이제 습관·할일·일정 전부 반복 설정 가능
     $("idt_date_label").textContent = kind === "todo" ? "시작 날짜" : "날짜";
     $("idt_date").value = "";
     $("idt_end").value = "";
     $("idt_time").value = "";
+    $("idt_repeat_unit").value = item.repeat_unit || "";
+    $("idt_repeat_interval").value = item.repeat_interval || 1;
     if (kind === "todo") {
       $("idt_date").value = item.start_date || "";
       $("idt_end").value = item.end_date || "";
@@ -2864,8 +2915,6 @@
       $("idt_time").value = item.event_time ? item.event_time.slice(0, 5) : "";
     } else {
       $("idt_time").value = item.start_minute != null ? minutesToHHMM(item.start_minute) : "";
-      $("idt_repeat_unit").value = item.repeat_unit || "";
-      $("idt_repeat_interval").value = item.repeat_interval || 1;
     }
     bg.classList.add("open");
   }
@@ -2875,19 +2924,20 @@
     const kind = bg.dataset.kind, id = bg.dataset.editId;
     if (!id) return;
     const timeVal = $("idt_time").value;
+    const repeat_unit = $("idt_repeat_unit").value || null;
+    const repeat_interval = repeat_unit ? (parseInt($("idt_repeat_interval").value, 10) || 1) : null;
     let patch = {};
     if (kind === "todo") {
       const startVal = $("idt_date").value;
       if (!startVal) { alert("시작 날짜를 입력해주세요."); return; }
-      patch = { start_date: startVal, end_date: $("idt_end").value || null, todo_time: timeVal ? timeVal + ":00" : null };
+      patch = { start_date: startVal, end_date: $("idt_end").value || null, todo_time: timeVal ? timeVal + ":00" : null, repeat_unit, repeat_interval };
     } else if (kind === "event") {
       const dateVal = $("idt_date").value;
       if (!dateVal) { alert("날짜를 입력해주세요."); return; }
-      patch = { event_date: dateVal, event_time: timeVal ? timeVal + ":00" : null };
+      patch = { event_date: dateVal, event_time: timeVal ? timeVal + ":00" : null, repeat_unit, repeat_interval };
     } else {
       if (!timeVal) { alert("시간을 입력해주세요."); return; }
-      const repeat_unit = $("idt_repeat_unit").value || null;
-      patch = { start_minute: hhmmToMinutes(timeVal), repeat_unit, repeat_interval: repeat_unit ? (parseInt($("idt_repeat_interval").value, 10) || 1) : null };
+      patch = { start_minute: hhmmToMinutes(timeVal), repeat_unit, repeat_interval };
     }
     const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
     const { error } = await sb.from(table).update(patch).eq("id", id);
