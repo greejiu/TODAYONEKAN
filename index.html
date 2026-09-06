@@ -1685,9 +1685,11 @@
     } else if (kind === "event") {
       if (zone === "someday") return; // 일정은 고정 스케줄 개념이라 언젠가로는 전환하지 않음
       // 어디로 옮기든 특정 하루/시간으로 콕 집어 놓는 동작이라, 기간(여러 날) 일정이었다면 하루짜리로 되돌림(할일 이동과 동일 규칙).
+      // "today-*" zone은 실제 오늘 날짜가 아니라 집 화면에서 지금 보고 있는 날짜(homeAgendaDate)를 뜻함
+      // (다른 날짜로 넘겨서 보다가 그 안에서 드래그해도 오늘로 튕기던 버그, 2026-09-06 결님 제보로 수정).
       const patch = zone === "planday" ? { event_date: zoneObj.date, end_date: null }
-        : zone === "today-allday" ? { event_date: todayStr(), end_date: null, event_time: null }
-        : { event_date: todayStr(), end_date: null, event_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
+        : zone === "today-allday" ? { event_date: homeAgendaDate, end_date: null, event_time: null }
+        : { event_date: homeAgendaDate, end_date: null, event_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
       const { error } = await sb.from("tok_events").update(patch).eq("id", id);
       if (error) { alert("이동 실패: " + error.message); return; }
     } else if (kind === "todo") {
@@ -1700,9 +1702,10 @@
         if (delErr) { alert("이동 실패: " + delErr.message); return; }
       } else {
         // 시작일은 "이 회차가 놓인 날"이라 드래그하면 그대로 바뀌지만, 종료일은 반복이 끝나는 날(선택)이라 드래그와 무관 — 건드리지 않음.
+        // "today-*" zone은 실제 오늘 날짜가 아니라 집 화면에서 지금 보고 있는 날짜(homeAgendaDate)를 뜻함.
         const patch = zone === "planday" ? { start_date: zoneObj.date }
-          : zone === "today-allday" ? { start_date: todayStr(), todo_time: null }
-          : { start_date: todayStr(), todo_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
+          : zone === "today-allday" ? { start_date: homeAgendaDate, todo_time: null }
+          : { start_date: homeAgendaDate, todo_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
         const { error } = await sb.from("tok_todos").update(patch).eq("id", id);
         if (error) { alert("이동 실패: " + error.message); return; }
       }
@@ -1712,8 +1715,8 @@
       if (!s) return;
       const patch = { title: s.title, is_done: s.is_done };
       if (zone === "planday") patch.start_date = zoneObj.date;
-      else if (zone === "today-allday") patch.start_date = todayStr();
-      else { patch.start_date = todayStr(); patch.todo_time = minutesToHHMM(zoneObj.startMinute) + ":00"; }
+      else if (zone === "today-allday") patch.start_date = homeAgendaDate;
+      else { patch.start_date = homeAgendaDate; patch.todo_time = minutesToHHMM(zoneObj.startMinute) + ":00"; }
       const { error: insErr } = await sb.from("tok_todos").insert(patch);
       if (insErr) { alert("이동 실패: " + insErr.message); return; }
       const { error: delErr } = await sb.from("tok_someday").delete().eq("id", id);
