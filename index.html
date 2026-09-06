@@ -74,8 +74,9 @@
   .task-row span{font-size:14px;}
   .task-row.done span{color:var(--sub);text-decoration:line-through;}
   .task-row.dragging{opacity:.5;}
-  .block-add-row{padding:10px 4px;color:var(--sub);font-size:13px;text-align:center;cursor:pointer;border-top:1px dashed var(--line);}
-  .block-add-row:hover{color:var(--accent);}
+  /* "+ 추가" 라벨 없이, 마지막 줄 바로 아래 빈 공간 자체가 클릭해서 추가하는 영역(호버 시에만 살짝 티 남). */
+  .block-add-row{min-height:16px;padding:8px 4px;cursor:pointer;border-radius:8px;}
+  .block-add-row:hover{background:var(--accent-soft);color:var(--accent);}
   .card.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-soft);}
 
   /* ── 집 : 목록/타임라인 보기 전환 ── */
@@ -102,12 +103,14 @@
   .agenda-item-card.done{opacity:.55;}
   .agenda-item-card.done .agenda-title{text-decoration:line-through;color:var(--sub);}
   .agenda-check-wrap{position:relative;width:20px;height:20px;flex-shrink:0;display:inline-flex;}
-  .agenda-item-check{appearance:none;-webkit-appearance:none;margin:0;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);background:#fff;cursor:pointer;}
+  .agenda-item-check{appearance:none;-webkit-appearance:none;margin:0;width:20px;height:20px;border-radius:6px;border:2px solid var(--line);background:#fff;cursor:pointer;}
   .agenda-item-check:checked{background:#4a90e2;border-color:#4a90e2;}
   .agenda-check-mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;pointer-events:none;opacity:0;}
   .agenda-item-check:checked ~ .agenda-check-mark{opacity:1;}
-  .agenda-item-time{font-size:11px;color:#2f6fed;background:#e6f3ff;border-radius:999px;padding:2px 8px;flex-shrink:0;font-weight:700;white-space:nowrap;}
+  .ag-block-row.done .agenda-title{color:var(--sub);text-decoration:line-through;}
   .agenda-empty-block{padding:14px;border-radius:14px;border:1px dashed var(--line);color:var(--sub);font-size:12px;text-align:center;}
+  /* 체크박스(네모)와는 다르게 일정은 늘 색이 차 있는 동그라미로(체크와 크기·위치는 맞추고, 모양으로만 구분). */
+  .agenda-event-dot{border-radius:50%;flex-shrink:0;display:inline-block;vertical-align:middle;}
 
   /* ── 집 : 타임라인 보기(15분 그리드, 습관은 시작시각·소요시간에 맞춰 배치) ── */
   .tl-grid{display:grid;grid-template-columns:44px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;touch-action:none;}
@@ -156,6 +159,7 @@
   .ctx-menu button{display:block;width:100%;padding:8px 16px;border:none;background:none;color:var(--danger);font-size:13px;text-align:left;cursor:pointer;border-radius:6px;white-space:nowrap;}
   .ctx-menu button:hover{background:var(--bg);}
   .ctx-menu button.default{color:var(--text);}
+  .ctx-menu button.selected{background:var(--accent-soft);font-weight:700;color:var(--accent);}
   .ctx-menu button .ctx-tag-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
 
   /* ── 집 : 2열 레이아웃 (1열 오늘, 2열 다가오는 계획+언젠가를 세로로 쌓음) ── */
@@ -199,6 +203,7 @@
   .ag-tl-task.event{background:#fff;border-style:dashed;}
   .ag-tl-task.dragging{opacity:.85;box-shadow:0 3px 10px rgba(60,50,100,.18);z-index:5;cursor:grabbing;}
   .ag-tl-task .ag-tl-title{font-size:12px;flex:1;}
+  .ag-tl-task input[type=checkbox]{width:14px;height:14px;flex-shrink:0;accent-color:var(--accent);margin:0;}
   .ag-tl-task::before, .ag-tl-task::after{content:"";position:absolute;left:10px;right:10px;height:2px;border-radius:2px;background:var(--accent);opacity:0;pointer-events:none;transition:opacity .12s;}
   .ag-tl-task::before{top:2px;}
   .ag-tl-task::after{bottom:2px;}
@@ -319,6 +324,23 @@
   .focus-sub-del:hover{color:var(--danger);}
   .focus-progress{color:var(--sub);font-size:11px;}
 
+  /* ── 집 : 포커스 타이머 카드(뽀모도로 아닌 진짜 스톱워치 — 시작한 시간부터 잰 만큼만 tok_focus_sessions에 기록) ── */
+  .ft-select{width:100%;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13px;background:#fff;margin-bottom:14px;color:var(--text);}
+  .ft-select:disabled{opacity:.6;}
+  .ft-clock-wrap{display:flex;justify-content:center;margin-bottom:16px;}
+  .ft-clock{position:relative;width:168px;height:168px;border-radius:50%;background:var(--card);border:1px solid var(--line);box-shadow:0 4px 14px rgba(150,130,200,.10);flex-shrink:0;}
+  .ft-ticks{position:absolute;inset:0;}
+  .ft-tick{position:absolute;top:50%;left:50%;width:2px;height:8px;margin:-4px 0 0 -1px;background:var(--sub);opacity:.28;border-radius:1px;}
+  .ft-hand{position:absolute;bottom:50%;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--sub);opacity:.42;transform-origin:bottom center;}
+  .ft-hand-hour{height:40px;}
+  .ft-hand-min{height:60px;}
+  .ft-clock-center{position:absolute;top:50%;left:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--sub);opacity:.5;}
+  .ft-elapsed{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.4px;color:var(--text);background:var(--card);padding:5px 12px;border-radius:12px;box-shadow:0 1px 5px rgba(0,0,0,.07);white-space:nowrap;}
+  .ft-controls{display:flex;gap:8px;}
+  .ft-btn{flex:1;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:10px;padding:9px 0;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .ft-btn:disabled{opacity:.4;cursor:default;}
+  .ft-btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+
   .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px color-mix(in srgb,var(--accent) 45%,transparent);cursor:pointer;z-index:8;}
   @media (max-width:760px){ .fab{bottom:78px;} }
 
@@ -368,9 +390,30 @@
       <div class="page" data-page="home">
         <div class="pagehead"><h2>🏠 집</h2></div>
 
-        <div class="focus-card card" id="focusTaskCard">
-          <div class="focus-head"><span id="focusTaskTitle">지금 할 일</span></div>
-          <div id="focusTaskBody"></div>
+        <div class="home-grid" style="margin-bottom:14px;">
+          <div class="focus-card card" id="focusTaskCard">
+            <div class="focus-head"><span id="focusTaskTitle">지금 할 일</span></div>
+            <div id="focusTaskBody"></div>
+          </div>
+
+          <div class="focus-card card" id="focusTimerCard">
+            <div class="focus-head">⏱ 포커스 타이머</div>
+            <select id="ftSelectTodo" class="ft-select"><option value="">선택 안 함</option></select>
+            <div class="ft-clock-wrap">
+              <div class="ft-clock">
+                <div class="ft-ticks" id="ftClockTicks"></div>
+                <div class="ft-hand ft-hand-hour" id="ftHourHand"></div>
+                <div class="ft-hand ft-hand-min" id="ftMinHand"></div>
+                <div class="ft-clock-center"></div>
+                <div class="ft-elapsed" id="ftElapsed">00:00</div>
+              </div>
+            </div>
+            <div class="ft-controls">
+              <button type="button" class="ft-btn ft-btn-primary" id="ftToggleBtn">시작</button>
+              <button type="button" class="ft-btn" id="ftEndBtn" disabled>종료</button>
+              <button type="button" class="ft-btn" id="ftResetBtn" disabled>초기화</button>
+            </div>
+          </div>
         </div>
 
         <div class="home-grid">
@@ -744,6 +787,7 @@
     $("sidebarUserEmail").textContent = session.user.email;
     $("settingsAccountCard").textContent = session.user.email;
     renderThemeGrid();
+    wireFocusTimer();
     await loadAll();
     showPage("home");
   }
@@ -933,7 +977,7 @@
         </div>`).join("");
     // 집 화면 다른 카드들과 동일하게: 비어있으면 안내문구 자체가 클릭해서 추가하는 빈칸, 있으면 그 아래 "+ 추가" 줄.
     const addRow = steps.length
-      ? `<div class="block-add-row" data-focus-sub-add="1">+ 추가</div>`
+      ? `<div class="block-add-row" data-focus-sub-add="1"></div>`
       : `<div class="focus-sub-empty block-add-row" data-focus-sub-add="1">아직 작은 행동이 없어요. 눌러서 추가</div>`;
     return `
       <div class="focus-meta">${focusMetaHtml(sel)}</div>
@@ -1005,12 +1049,13 @@
     };
   }
   // "작은 행동" 추가도 다른 집 화면 카드들과 동일하게 눌러서(클릭) 인라인 입력으로 통일.
-  function attachFocusSubAddClick() {
+  // autoOpen: true면 붙자마자 바로 입력창을 염(엔터로 연달아 추가할 때, 마우스로 다시 안 눌러도 되게).
+  function attachFocusSubAddClick(autoOpen) {
     const row = document.querySelector('#focusTaskBody .block-add-row[data-focus-sub-add]');
     if (!row) return;
     const todoId = row.closest(".focus-sub-list")?.dataset.todoId;
     if (!todoId) return;
-    row.onclick = () => {
+    const openInput = () => {
       const input = document.createElement("input");
       input.type = "text";
       input.maxLength = 120;
@@ -1019,7 +1064,7 @@
       row.replaceWith(input);
       input.focus();
       let done = false;
-      const commit = async () => {
+      const commit = async (reopen) => {
         if (done) return;
         const title = input.value.trim();
         if (!title) { done = true; renderFocusCard(); return; }
@@ -1029,13 +1074,16 @@
         if (error) { alert("추가 실패: " + error.message); done = false; return; }
         todoSubtasks.push(data);
         renderFocusCard();
+        if (reopen) attachFocusSubAddClick(true); // 엔터로 저장한 거면 바로 다음 줄 입력창을 또 열어줌
       };
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Enter") { e.preventDefault(); commit(true); }
         else if (e.key === "Escape") { done = true; renderFocusCard(); }
       });
-      input.addEventListener("blur", commit);
+      input.addEventListener("blur", () => commit(false));
     };
+    row.onclick = openInput;
+    if (autoOpen) openInput();
   }
   async function toggleFocusSubtask(subId) {
     const step = todoSubtasks.find(s => s.id === subId);
@@ -1070,6 +1118,118 @@
     renderAgendaTimed();
     renderPlanUpcomingBoard();
     renderSomedaySummary();
+    populateFocusTimerSelect();
+  }
+
+  // ── 집 : 포커스 타이머(뽀모도로 아닌 진짜 스톱워치) ──
+  // 실행 중에도 loadAll()이 자주 다시 호출되지만(체크박스 등), 이 카드의 DOM은 renderHome()이 건드리지 않는 별도 영역이라
+  // 타이머 상태(변수)와 매초 갱신 중인 화면이 다른 곳 새로고침에 끊기지 않고 그대로 유지됨.
+  let ftElapsedSec = 0;
+  let ftRunning = false;
+  let ftTimerHandle = null;
+  let ftClockHandle = null;
+  let ftSessionStartedAt = null; // 세션 시작(첫 "시작" 누른) 시각 — 기록 저장용
+  let ftSessionTodoId = null;    // 세션 시작 시점에 스냅샷(중간에 할일 목록이 바뀌어도 이번 기록엔 영향 없게)
+  let ftSessionTodoTitle = null;
+
+  function populateFocusTimerSelect() {
+    const sel = $("ftSelectTodo");
+    if (!sel) return;
+    const prevValue = sel.value;
+    const options = todos.filter(t => !t.is_done);
+    sel.innerHTML = `<option value="">선택 안 함</option>` + options.map(t => `<option value="${t.id}">${escapeHtml(t.title)}</option>`).join("");
+    if (options.some(t => t.id === prevValue)) sel.value = prevValue;
+  }
+
+  function ftFormatElapsed(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`;
+  }
+
+  function buildFocusTimerTicks() {
+    const wrap = $("ftClockTicks");
+    if (!wrap) return;
+    let html = "";
+    for (let i = 0; i < 12; i++) html += `<div class="ft-tick" style="transform:rotate(${i * 30}deg) translateY(-78px)"></div>`;
+    wrap.innerHTML = html;
+  }
+
+  // 시계 바탕(현재 시각을 가리키는 시침·분침)은 스톱워치가 멈춰있어도 계속 실제 시간에 맞게 흘러감.
+  function renderFocusTimerClock() {
+    const elapsedEl = $("ftElapsed");
+    if (elapsedEl) elapsedEl.textContent = ftFormatElapsed(ftElapsedSec);
+    const now = new Date();
+    const hourDeg = ((now.getHours() % 12) + now.getMinutes() / 60) * 30;
+    const minDeg = (now.getMinutes() + now.getSeconds() / 60) * 6;
+    const hourHand = $("ftHourHand"), minHand = $("ftMinHand");
+    if (hourHand) hourHand.style.transform = `rotate(${hourDeg}deg)`;
+    if (minHand) minHand.style.transform = `rotate(${minDeg}deg)`;
+  }
+
+  function renderFocusTimerButtons() {
+    const toggleBtn = $("ftToggleBtn"), endBtn = $("ftEndBtn"), resetBtn = $("ftResetBtn"), sel = $("ftSelectTodo");
+    if (!toggleBtn) return;
+    toggleBtn.textContent = ftRunning ? "일시정지" : (ftElapsedSec > 0 ? "이어하기" : "시작");
+    endBtn.disabled = ftElapsedSec === 0;
+    resetBtn.disabled = ftElapsedSec === 0;
+    if (sel) sel.disabled = ftRunning || ftElapsedSec > 0; // 세션 도중엔 할일을 바꿀 수 없게(기록은 시작할 때 스냅샷 고정)
+  }
+
+  function ftResetState() {
+    if (ftRunning) { ftRunning = false; clearInterval(ftTimerHandle); ftTimerHandle = null; }
+    ftElapsedSec = 0;
+    ftSessionStartedAt = null;
+    ftSessionTodoId = null;
+    ftSessionTodoTitle = null;
+  }
+
+  function wireFocusTimer() {
+    buildFocusTimerTicks();
+    populateFocusTimerSelect();
+    renderFocusTimerButtons();
+    renderFocusTimerClock();
+    // 스톱워치가 꺼져있는 동안에도 시계 바탕은 계속 흘러가야 하니 1초마다 갱신(돌고 있을 땐 ftTick이 이미 매초 처리).
+    ftClockHandle = setInterval(() => { if (!ftRunning) renderFocusTimerClock(); }, 1000);
+
+    $("ftToggleBtn").onclick = () => {
+      if (ftRunning) {
+        ftRunning = false;
+        clearInterval(ftTimerHandle);
+        ftTimerHandle = null;
+      } else {
+        if (!ftSessionStartedAt) {
+          ftSessionStartedAt = new Date();
+          const sel = $("ftSelectTodo");
+          ftSessionTodoId = sel && sel.value ? sel.value : null;
+          ftSessionTodoTitle = sel && sel.value ? sel.options[sel.selectedIndex].textContent : null;
+        }
+        ftRunning = true;
+        ftTimerHandle = setInterval(() => { ftElapsedSec++; renderFocusTimerClock(); }, 1000);
+      }
+      renderFocusTimerButtons();
+    };
+
+    $("ftEndBtn").onclick = async () => {
+      if (ftElapsedSec === 0) return;
+      if (ftRunning) { ftRunning = false; clearInterval(ftTimerHandle); ftTimerHandle = null; }
+      const { error } = await sb.from("tok_focus_sessions").insert({
+        todo_id: ftSessionTodoId, todo_title: ftSessionTodoTitle,
+        started_at: ftSessionStartedAt.toISOString(), ended_at: new Date().toISOString(),
+        duration_seconds: ftElapsedSec,
+      });
+      if (error) { alert("포커스 기록 저장 실패: " + error.message); renderFocusTimerButtons(); return; }
+      ftResetState();
+      populateFocusTimerSelect();
+      renderFocusTimerButtons();
+      renderFocusTimerClock();
+    };
+
+    $("ftResetBtn").onclick = () => {
+      ftResetState();
+      populateFocusTimerSelect();
+      renderFocusTimerButtons();
+      renderFocusTimerClock();
+    };
   }
 
   function addDaysStr(dateStr, delta) {
@@ -1246,9 +1406,10 @@
     const cat = itemTagPool(kind).find(c => c.id === catId);
     return cat ? (cat.color || null) : null;
   }
-  // 일정 항목 옆에 붙이는 범주색 동그라미("일정"이라는 글자 배지 대신 — 범주 없으면 일정 태그의 기존 핑크색 그대로)
-  function eventDotHtml(catId) {
-    return `<span class="ag-dot" style="background:${itemTagColor("event", catId) || "#c9457a"};"></span>`;
+  // 일정 항목 옆에 붙이는 범주색 동그라미("일정"이라는 글자 배지 대신) — 체크박스(네모)와 크기·자리는 맞추되 항상 색이 찬 원으로 구분.
+  // size: 이 동그라미가 들어갈 자리의 체크박스 크기에 맞춰 호출부에서 지정(하루종일·타임블럭=20, 타임라인=14).
+  function eventDotHtml(catId, size = 20) {
+    return `<span class="agenda-event-dot" style="width:${size}px;height:${size}px;background:${itemTagColor("event", catId) || "#c9457a"};"></span>`;
   }
   // 태그/범주 색을 카드 배경으로 옅게 깔아줌(원색 그대로면 글자가 안 보여서 흰색과 섞어 파스텔톤으로), 태그 없으면 흰 배경 고정
   function itemTagBgStyle(kind, catId) {
@@ -1292,7 +1453,7 @@
     // 비어있을 땐 안내문구 자체가 곧 클릭해서 추가하는 빈칸(안내문+추가버튼 따로 안 두고 하나로 합침),
     // 이미 항목이 있으면 그 아래에 "+ 추가" 줄만 따로 붙여서 더 추가할 수 있게 함.
     $("agendaAllDayList").innerHTML = rows.length
-      ? rows.join("") + `<div class="block-add-row" data-alladd="1">+ 추가</div>`
+      ? rows.join("") + `<div class="block-add-row" data-alladd="1"></div>`
       : `<div class="agenda-empty-block block-add-row" data-alladd="1">하루종일 항목이 없어요. 눌러서 추가</div>`;
     const allDayCountEl = $("agendaAllDayCount");
     if (allDayCountEl) {
@@ -1314,34 +1475,38 @@
   }
 
   // 하루종일 영역 "+ 추가" 클릭 → 인라인 입력으로 시간 없는 할일 바로 생성(타임블럭의 block-add-row와 동일 패턴).
-  function attachAgendaAllDayAddClick() {
+  // autoOpen: true면 붙자마자 바로 입력창을 염(엔터로 연달아 추가할 때, 마우스로 다시 안 눌러도 되게).
+  function attachAgendaAllDayAddClick(autoOpen) {
     const row = document.querySelector('#agendaAllDayList .block-add-row[data-alladd]');
     if (!row) return;
-    row.onclick = () => {
-      const wrap = document.createElement("div");
-      wrap.className = "block-add-row";
-      wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
-      row.replaceWith(wrap);
-      const input = wrap.querySelector("input");
+    const openInput = () => {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "inline-add-input";
+      input.placeholder = "할일 이름";
+      row.replaceWith(input);
       input.focus();
       let done = false;
-      const commit = async () => {
+      const commit = async (reopen) => {
         if (done) return;
         const name = input.value.trim();
-        if (!name) { renderAgendaAllDay(); return; }
+        if (!name) { done = true; renderAgendaAllDay(); return; }
         done = true;
         const { error } = await sb.from("tok_todos").insert({
           title: name, start_date: homeAgendaDate, todo_time: null,
         });
         if (error) { alert("저장 실패: " + error.message); done = false; return; }
         await loadAll();
+        if (reopen) attachAgendaAllDayAddClick(true);
       };
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Enter") { e.preventDefault(); commit(true); }
         else if (e.key === "Escape") { done = true; renderAgendaAllDay(); }
       });
-      input.addEventListener("blur", commit);
+      input.addEventListener("blur", () => commit(false));
     };
+    row.onclick = openInput;
+    if (autoOpen) openInput();
   }
 
   // 집 페이지 3열(언젠가 / 다가오는 계획 / 오늘의 하루종일·타임블럭·타임라인) 전체를 아우르는
@@ -1519,11 +1684,11 @@
       : it.kind === "todo"
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
       : eventDotHtml(it.cat_id); // 일정은 체크박스 자리에 범주색 동그라미로 대신 표시
-    // 타임블럭(카드형) 뷰는 시간대 섹션으로 이미 구분되고 있어 태그색 배경 없이 항상 흰 배경으로 둠(색 구분은 타임라인 뷰에서만).
-    return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
+    // 항목마다 카드처럼 보여서 공간을 너무 차지한다고 해서, 다가오는 계획 목록과 똑같이 카드 없는 플랫한 한 줄로 변경.
+    return `<div class="plan-row ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${lead}
       <span class="agenda-title">${escapeHtml(it.name)}</span>
-      ${it.kind !== "event" ? `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>` : ""}
+      ${it.kind !== "event" ? `<span class="plan-time">${minutesToHHMM(it.start_minute)}</span>` : ""}
     </div>`;
   }
 
@@ -1542,7 +1707,7 @@
         // 비어있을 땐 "일정 없음" 안내문구 자체가 곧 클릭해서 추가하는 빈칸(하루종일·언젠가와 동일 규칙),
         // 이미 항목이 있으면 그 아래에 "+ 추가" 줄만 따로 붙임.
         html += inBlock.length
-          ? `<div class="agenda-flat ag-block-card" data-block-start="${block.start_minute}">${inBlock.map(agendaItemRowHtml).join("")}<div class="block-add-row" data-block-start="${block.start_minute}">+ 추가</div></div>`
+          ? `<div class="agenda-flat ag-block-card" data-block-start="${block.start_minute}">${inBlock.map(agendaItemRowHtml).join("")}<div class="block-add-row" data-block-start="${block.start_minute}"></div></div>`
           : `<div class="agenda-flat ag-block-card" data-block-start="${block.start_minute}"><div class="agenda-empty-block block-add-row" data-block-start="${block.start_minute}">일정 없음. 눌러서 추가</div></div>`;
       });
       const uncovered = items.filter(it => !covered.has(it));
@@ -1561,21 +1726,22 @@
 
   // 블럭 카드 아래 "+ 추가"를 누르면 팝업 없이 그 자리에서 바로 할일을 입력할 수 있게 함
   // (해당 블럭의 시작 시각으로 저장됨, 소요시간은 기본 30분).
-  function attachAgendaBlockAddClick() {
+  // autoOpenStart: 특정 블럭(startMinute)의 입력창을 붙자마자 바로 열음(엔터로 연달아 추가할 때 사용).
+  function attachAgendaBlockAddClick(autoOpenStart) {
     document.querySelectorAll(".block-add-row[data-block-start]").forEach(row => {
-      row.onclick = () => {
-        const startMinute = parseInt(row.dataset.blockStart, 10);
-        const wrap = document.createElement("div");
-        wrap.className = "block-add-row";
-        wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
-        row.replaceWith(wrap);
-        const input = wrap.querySelector("input");
+      const startMinute = parseInt(row.dataset.blockStart, 10);
+      const openInput = () => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "inline-add-input";
+        input.placeholder = "할일 이름";
+        row.replaceWith(input);
         input.focus();
         let done = false;
-        const commit = async () => {
+        const commit = async (reopen) => {
           if (done) return;
           const name = input.value.trim();
-          if (!name) { renderAgendaTimed(); return; }
+          if (!name) { done = true; renderAgendaTimed(); return; }
           done = true;
           const { error } = await sb.from("tok_todos").insert({
             title: name, start_date: homeAgendaDate,
@@ -1583,13 +1749,16 @@
           });
           if (error) { alert("저장 실패: " + error.message); done = false; return; }
           await loadAll();
+          if (reopen) attachAgendaBlockAddClick(startMinute);
         };
         input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Enter") { e.preventDefault(); commit(true); }
           else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
         });
-        input.addEventListener("blur", commit);
+        input.addEventListener("blur", () => commit(false));
       };
+      row.onclick = openInput;
+      if (autoOpenStart === startMinute) openInput();
     });
   }
 
@@ -1714,7 +1883,7 @@
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
           : it.kind === "todo"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
-          : eventDotHtml(it.cat_id)}
+          : eventDotHtml(it.cat_id, 14)}
         <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
     });
@@ -2129,7 +2298,6 @@
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
           <span class="plan-todo-title planup-todo-title">${escapeHtml(td.title)}</span>
           ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : td.todo_time ? `<span class="plan-time">${td.todo_time.slice(0, 5)}</span>` : ""}
-          <button class="planup-todo-edit" data-id="${td.id}">✎</button>
         </div>`;
       }).join("");
       const bodyHtml = habitHtml + eventHtml + todoHtml;
@@ -2150,9 +2318,6 @@
         if (reloaded) return;
         renderPlanUpcomingBoard();
       };
-    });
-    document.querySelectorAll(".planup-todo-edit").forEach(btn => {
-      btn.onclick = (e) => { e.stopPropagation(); openTodoSheet(todos.find(t => t.id === btn.dataset.id)); };
     });
     document.querySelectorAll("#planUpcomingBoard .plan-row.todo .planup-todo-title").forEach(titleEl => {
       titleEl.onclick = (e) => {
@@ -2182,7 +2347,7 @@
     document.querySelectorAll(".planup-drag-row[data-id]").forEach(row => {
       let moved = false, startX = 0, startY = 0, curTarget = null;
       row.addEventListener("pointerdown", (e) => {
-        if (e.target.closest("input") || e.target.closest(".planup-todo-edit")) return;
+        if (e.target.closest("input")) return;
         e.stopPropagation();
         moved = false; curTarget = null;
         startX = e.clientX; startY = e.clientY;
@@ -2250,7 +2415,7 @@
     const clearHighlight = () => board.querySelectorAll(".planup-day").forEach(el => el.classList.remove("drag-hi"));
 
     board.onpointerdown = (e) => {
-      if (e.target.closest(".planup-todo-check") || e.target.closest(".planup-todo-edit") || e.target.closest(".planup-todo-title") || e.target.closest(".planup-habit-check") || e.target.closest(".planup-drag-row")) return;
+      if (e.target.closest(".planup-todo-check") || e.target.closest(".planup-todo-title") || e.target.closest(".planup-habit-check") || e.target.closest(".planup-drag-row")) return;
       const dayEl = e.target.closest(".planup-day");
       if (!dayEl) return;
       const startIdx = parseInt(dayEl.dataset.idx, 10);
@@ -2291,7 +2456,7 @@
         <span class="agenda-title">${escapeHtml(item.title)}</span>
       </div>`).join("");
     $("somedaySummaryList").innerHTML = items.length
-      ? rowsHtml + `<div class="block-add-row" data-somedayadd="1">+ 추가</div>`
+      ? rowsHtml + `<div class="block-add-row" data-somedayadd="1"></div>`
       : `<div class="agenda-empty-block block-add-row" data-somedayadd="1">등록된 항목이 없어요. 눌러서 추가</div>`;
     document.querySelectorAll(".somedaysum-check").forEach(cb => {
       cb.onchange = async () => {
@@ -2305,32 +2470,36 @@
   }
 
   // "언젠가" 빈칸/+ 추가 클릭 → 인라인 입력으로 tok_someday에 바로 생성.
-  function attachSomedayAddClick() {
+  // autoOpen: true면 붙자마자 바로 입력창을 염(엔터로 연달아 추가할 때, 마우스로 다시 안 눌러도 되게).
+  function attachSomedayAddClick(autoOpen) {
     const row = document.querySelector('#somedaySummaryList .block-add-row[data-somedayadd]');
     if (!row) return;
-    row.onclick = () => {
-      const wrap = document.createElement("div");
-      wrap.className = "block-add-row";
-      wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="언젠가 할 일" />`;
-      row.replaceWith(wrap);
-      const input = wrap.querySelector("input");
+    const openInput = () => {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "inline-add-input";
+      input.placeholder = "언젠가 할 일";
+      row.replaceWith(input);
       input.focus();
       let done = false;
-      const commit = async () => {
+      const commit = async (reopen) => {
         if (done) return;
         const name = input.value.trim();
-        if (!name) { renderSomedaySummary(); return; }
+        if (!name) { done = true; renderSomedaySummary(); return; }
         done = true;
         const { error } = await sb.from("tok_someday").insert({ title: name });
         if (error) { alert("저장 실패: " + error.message); done = false; return; }
         await loadAll();
+        if (reopen) attachSomedayAddClick(true);
       };
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Enter") { e.preventDefault(); commit(true); }
         else if (e.key === "Escape") { done = true; renderSomedaySummary(); }
       });
-      input.addEventListener("blur", commit);
+      input.addEventListener("blur", () => commit(false));
     };
+    row.onclick = openInput;
+    if (autoOpen) openInput();
   }
 
   // 언젠가 행을 다가오는 계획의 특정 날짜/오늘(타임블럭·타임라인·하루종일)로 드래그하면
@@ -3041,6 +3210,7 @@
       <button type="button" class="default" data-act="date">날짜 변경</button>
       <button type="button" class="default" data-act="tag">${tagLabel}</button>
       ${convertBtn}
+      <button type="button" class="default" data-act="duplicate">복제</button>
       <button type="button" data-act="delete">삭제</button>
     `;
     document.body.appendChild(menu);
@@ -3060,6 +3230,10 @@
         else await convertHabitToTodo(id);
       };
     }
+    menu.querySelector('[data-act="duplicate"]').onclick = async (e) => {
+      e.stopPropagation(); menu.remove();
+      await duplicateAgendaItem(kind, id);
+    };
     menu.querySelector('[data-act="delete"]').onclick = async (e) => {
       e.stopPropagation(); menu.remove();
       const label = item ? (item.name || item.title || "이 항목") : "이 항목";
@@ -3070,6 +3244,34 @@
       await loadAll();
     };
     attachCtxMenuOutsideClose(menu);
+  }
+
+  // 오른쪽 클릭 메뉴 "복제" — 같은 종류로 항목 하나를 그대로 복사해서 새로 만듦(제목에 "(사본)" 붙여 구분).
+  async function duplicateAgendaItem(kind, id) {
+    const item = agendaItemById(kind, id);
+    if (!item) return;
+    let error;
+    if (kind === "habit") {
+      ({ error } = await sb.from("tok_habits").insert({
+        name: (item.name || "이름 없는 습관") + " (사본)", category_id: item.category_id || null,
+        repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval,
+        start_minute: item.start_minute, duration_minutes: item.duration_minutes || 30,
+      }));
+    } else if (kind === "todo") {
+      ({ error } = await sb.from("tok_todos").insert({
+        title: (item.title || "이름 없는 할일") + " (사본)", start_date: item.start_date, end_date: item.end_date || null,
+        todo_time: item.todo_time || null, duration_minutes: item.duration_minutes || null,
+        tag_id: item.tag_id || null, repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval,
+      }));
+    } else {
+      ({ error } = await sb.from("tok_events").insert({
+        title: (item.title || "이름 없는 일정") + " (사본)", event_date: item.event_date, end_date: item.end_date || null,
+        event_time: item.event_time || null, memo: item.memo || null, category_id: item.category_id || null,
+        repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval,
+      }));
+    }
+    if (error) { alert("복제 실패: " + error.message); return; }
+    await loadAll();
   }
 
   // 반복 할일 → 습관 전환: 새 습관으로 만들고 기존 할일 행은 삭제(진행 중인 이 회차만 바뀜, 이미 지나간
@@ -3117,12 +3319,15 @@
   function showItemTagPicker(x, y, kind, id) {
     document.querySelector(".ctx-menu")?.remove();
     const pool = itemTagPool(kind);
+    // 지금 이 항목에 이미 붙어있는 태그/범주가 어떤 건지 목록에서 바로 보이게(체크 표시 + 배경 강조).
+    const item = agendaItemById(kind, id);
+    const currentVal = item ? (kind === "todo" ? (item.tag_id || null) : (item.category_id || null)) : null;
     const menu = document.createElement("div");
     menu.className = "ctx-menu";
     menu.style.left = x + "px";
     menu.style.top = y + "px";
-    const noneBtn = `<button type="button" class="default" data-tag="">${kind === "event" ? "범주 없음" : "태그 없음"}</button>`;
-    const items = pool.map(c => `<button type="button" class="default" data-tag="${c.id}"><span class="ctx-tag-dot" style="background:${c.color || "var(--accent)"};"></span>${escapeHtml(c.name)}</button>`).join("");
+    const noneBtn = `<button type="button" class="default${currentVal ? "" : " selected"}" data-tag="">${kind === "event" ? "범주 없음" : "태그 없음"}${currentVal ? "" : " ✓"}</button>`;
+    const items = pool.map(c => `<button type="button" class="default${c.id === currentVal ? " selected" : ""}" data-tag="${c.id}"><span class="ctx-tag-dot" style="background:${c.color || "var(--accent)"};"></span>${escapeHtml(c.name)}${c.id === currentVal ? " ✓" : ""}</button>`).join("");
     menu.innerHTML = noneBtn + items;
     document.body.appendChild(menu);
     menu.querySelectorAll("button[data-tag]").forEach(btn => {
