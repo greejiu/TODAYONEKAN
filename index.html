@@ -194,6 +194,8 @@
      이미 있던 .dragging/.drop-target 스타일이 이 뷰에만 빠져 있었음. */
   .ag-block-row.dragging{opacity:.5;cursor:grabbing;}
   .ag-block-card.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-soft);border-radius:8px;}
+  /* 타임블럭 드래그 중 손가락(커서)을 따라다니는 작은 미리보기 칩 — 타임라인처럼 "따라 움직이는" 느낌을 주기 위함. */
+  .ag-drag-ghost{position:fixed;z-index:300;pointer-events:none;background:var(--card);border:1px solid var(--accent);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--text);box-shadow:0 6px 16px rgba(0,0,0,.18);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .ag-tl-grid.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;}
   #agendaAllDayZone.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;border-radius:14px;}
   #somedayZone.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;border-radius:14px;}
@@ -1961,6 +1963,8 @@
   // 그 블럭의 시작 시각으로 재배정됨(습관 탭 attachBlockDrag와 동일 패턴, 습관+일정 공용으로 일반화).
   function attachAgendaBlockDrag() {
     let dragEl = null, dragId = null, dragKindAttr = null, moved = false, startX = 0, startY = 0, curTarget = null;
+    let ghost = null; // 타임라인처럼 커서를 따라다니는 항목 미리보기(2026-09-06 결님 요청 — 카드형 뷰는 절대좌표가 아니라
+                       // 정적 dim+테두리만으론 "따라 움직이는" 느낌이 안 나서, 손가락을 따라오는 작은 칩을 하나 더 붙임).
 
     document.querySelectorAll(".ag-block-row[data-id]").forEach(row => {
       row.addEventListener("pointerdown", (e) => {
@@ -1974,8 +1978,13 @@
         if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
           moved = true;
           dragEl.classList.add("dragging");
+          ghost = document.createElement("div");
+          ghost.className = "ag-drag-ghost";
+          ghost.textContent = dragEl.querySelector(".agenda-title")?.textContent || "";
+          document.body.appendChild(ghost);
         }
         if (!moved) return;
+        if (ghost) { ghost.style.left = `${e.clientX + 14}px`; ghost.style.top = `${e.clientY + 10}px`; }
         const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], #agendaAllDayZone, .planup-day, #somedayZone");
         if (under !== curTarget) {
           curTarget?.classList.remove("drop-target");
@@ -1988,6 +1997,7 @@
         const el = dragEl, id = dragId, kind = dragKindAttr, wasMoved = moved;
         dragEl = null; dragId = null; dragKindAttr = null; moved = false;
         el.classList.remove("dragging");
+        ghost?.remove(); ghost = null;
         curTarget?.classList.remove("drop-target");
         curTarget = null;
         if (!wasMoved) { startAgendaItemInlineEdit(el, id, kind); return; }
@@ -1997,6 +2007,7 @@
       row.addEventListener("pointerup", finish);
       row.addEventListener("pointercancel", () => {
         dragEl?.classList.remove("dragging");
+        ghost?.remove(); ghost = null;
         curTarget?.classList.remove("drop-target");
         dragEl = null; dragId = null; dragKindAttr = null; moved = false; curTarget = null;
       });
