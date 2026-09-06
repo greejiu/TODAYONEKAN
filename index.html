@@ -1179,9 +1179,11 @@
     const cat = itemTagPool(kind).find(c => c.id === catId);
     return cat ? (cat.color || null) : null;
   }
-  function itemTagDotHtml(kind, catId) {
+  // 태그/범주 색을 카드 배경으로 옅게 깔아줌(원색 그대로면 글자가 안 보여서 흰색과 섞어 파스텔톤으로)
+  function itemTagBgStyle(kind, catId) {
     const color = itemTagColor(kind, catId);
-    return color ? `<span class="ag-dot" style="background:${color};"></span>` : "";
+    if (!color) return "";
+    return `background:color-mix(in srgb, ${color} 24%, var(--card));border-color:color-mix(in srgb, ${color} 50%, var(--line));`;
   }
   // 다가오는 계획 각 날짜 점 색상(장식용, 항목 있는 날만 색이 돌아가며 붙고 빈 날은 회색)
   const PLAN_DAY_DOTS = ["#4a90e2", "#f5a742", "#a56cf0", "#3fae6a", "#e2678a"];
@@ -1397,9 +1399,9 @@
       : it.kind === "todo"
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
       : "";
-    return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
+    return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" style="${itemTagBgStyle(it.kind, it.cat_id)}">
       ${lead}
-      <span class="agenda-title">${itemTagDotHtml(it.kind, it.cat_id)}${escapeHtml(it.name)}</span>
+      <span class="agenda-title">${escapeHtml(it.name)}</span>
       ${it.kind === "event" ? `<span class="agenda-tag kind-event">일정</span>` : `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>`}
     </div>`;
   }
@@ -1578,13 +1580,13 @@
       const height = (eRow - sRow) * AG_TL_ROW_PX;
       const widthPct = 100 / colCount;
       const leftPct = widthPct * col;
-      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" data-start="${it.start_minute}" data-duration="${it.duration_minutes}" style="top:${top}px;height:${height}px;left:${leftPct}%;width:calc(${widthPct}% - 4px);">
+      itemsHtml += `<div class="ag-tl-task ${it.kind} ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" data-start="${it.start_minute}" data-duration="${it.duration_minutes}" style="top:${top}px;height:${height}px;left:${leftPct}%;width:calc(${widthPct}% - 4px);${itemTagBgStyle(it.kind, it.cat_id)}">
         ${it.kind === "habit"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
           : it.kind === "todo"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
           : `<span class="agenda-tag">일정</span>`}
-        <span class="ag-tl-title">${itemTagDotHtml(it.kind, it.cat_id)}${escapeHtml(it.name)}</span>
+        <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
     });
     $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}<div class="ag-tl-content">${itemsHtml}</div></div>`;
