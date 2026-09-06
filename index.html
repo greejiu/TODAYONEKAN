@@ -1276,7 +1276,7 @@
     const dayTimedTodos = todos.filter(td => td.todo_time && td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
     const todoItems = dayTimedTodos.map(td => ({
       kind: "todo", id: td.id, name: td.title,
-      start_minute: hhmmToMinutes(td.todo_time.slice(0, 5)), duration_minutes: 30, done: td.is_done,
+      start_minute: hhmmToMinutes(td.todo_time.slice(0, 5)), duration_minutes: td.duration_minutes || 30, done: td.is_done,
     }));
     return [...habitItems, ...eventItems, ...todoItems].sort((a, b) => a.start_minute - b.start_minute);
   }
@@ -1455,7 +1455,7 @@
       const kind = task.dataset.kind;
       const origStart = parseInt(task.dataset.start, 10);
       const origDuration = parseInt(task.dataset.duration, 10);
-      const resizable = kind === "habit"; // 일정은 길이 개념이 없어 조절 제외
+      const resizable = kind === "habit" || kind === "todo"; // 일정(고정 스케줄)만 길이 개념이 없어 조절 제외
 
       let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null, isMouse = false;
       let longPressTimer = null;
@@ -1613,9 +1613,9 @@
           if (error) { alert((k === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
         } else if (kind === "todo") {
           const { error } = await sb.from("tok_todos").update({
-            todo_time: minutesToHHMM(pendingStart) + ":00",
+            todo_time: minutesToHHMM(pendingStart) + ":00", duration_minutes: pendingDuration,
           }).eq("id", id);
-          if (error) { alert("이동 실패: " + error.message); }
+          if (error) { alert((k === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
         } else {
           const { error } = await sb.from("tok_events").update({
             event_time: minutesToHHMM(pendingStart) + ":00",
