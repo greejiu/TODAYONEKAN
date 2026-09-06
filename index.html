@@ -83,26 +83,31 @@
   .card.drop-target{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-soft);}
 
   /* ── 집 : 목록/타임라인 보기 전환 ── */
-  .view-toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .view-toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;background:linear-gradient(135deg,#fff8e6,#fff3e0);border:1px solid var(--line);border-radius:16px;padding:6px;}
   .view-toggle{display:flex;gap:6px;flex:1;}
   .view-toggle button{flex:1;padding:8px 0;border:1px solid var(--line);background:#fff;border-radius:12px;font-size:13px;color:var(--sub);cursor:pointer;}
   .view-toggle button.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);font-weight:600;}
-  .today-btn{flex:none;padding:8px 14px;border:1px solid var(--line);background:#fff;border-radius:12px;font-size:13px;color:var(--sub);cursor:pointer;}
-  .today-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);}
+  .today-btn{flex:none;padding:8px 16px;border:1px solid #ffd9e6;background:#ffeef4;border-radius:999px;font-size:13px;color:#c9457a;font-weight:700;cursor:pointer;}
+  .today-btn:hover{background:#ffe0ec;}
   /* ── 오늘 열 : 하루종일 + 타임블럭(사용자 스크린샷 시안 참고 — 항목별 둥근 카드형) ── */
   .agenda-flat{display:flex;flex-direction:column;}
   .agenda-row-empty{min-height:34px;border-bottom:1px solid var(--line);}
   .agenda-row-empty:last-child{border-bottom:none;}
   .ag-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:14px 2px 8px;}
   .ag-section-head:first-child{margin-top:0;}
-  .ag-section-head .label{font-size:12px;color:var(--sub);font-weight:700;}
+  .ag-section-head .label{font-size:13px;color:var(--text);font-weight:700;}
   .ag-section-head .count{font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;font-weight:700;flex-shrink:0;}
-  .agenda-item-card{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:6px;}
+  .ag-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+  .agenda-item-card{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:6px;box-shadow:0 3px 10px rgba(150,130,200,.06);}
   .agenda-item-card:last-child{margin-bottom:0;}
   .agenda-item-card.done{opacity:.55;}
   .agenda-item-card.done .agenda-title{text-decoration:line-through;color:var(--sub);}
-  .agenda-item-check{width:19px;height:19px;accent-color:var(--ok);cursor:pointer;flex-shrink:0;}
-  .agenda-item-time{font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 8px;flex-shrink:0;font-weight:700;}
+  .agenda-check-wrap{position:relative;width:20px;height:20px;flex-shrink:0;display:inline-flex;}
+  .agenda-item-check{appearance:none;-webkit-appearance:none;margin:0;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);background:#fff;cursor:pointer;}
+  .agenda-item-check:checked{background:#4a90e2;border-color:#4a90e2;}
+  .agenda-check-mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;pointer-events:none;opacity:0;}
+  .agenda-item-check:checked ~ .agenda-check-mark{opacity:1;}
+  .agenda-item-time{font-size:11px;color:#2f6fed;background:#e6f3ff;border-radius:999px;padding:2px 8px;flex-shrink:0;font-weight:700;white-space:nowrap;}
   .agenda-empty-block{padding:14px;border-radius:14px;border:1px dashed var(--line);color:var(--sub);font-size:12px;text-align:center;}
 
   /* ── 집 : 타임라인 보기(15분 그리드, 습관은 시작시각·소요시간에 맞춰 배치) ── */
@@ -160,8 +165,11 @@
   /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
   .home-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start;}
   @media (max-width:900px){ .home-grid3{grid-template-columns:1fr;} }
-  .agenda-head{display:flex;align-items:center;justify-content:center;gap:10px;}
-  .agenda-nav{background:none;border:none;color:var(--sub);cursor:pointer;font-size:13px;padding:2px 8px;border-radius:6px;}
+  .ag-header-row{display:flex;align-items:center;gap:8px;}
+  .agenda-head{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;background:linear-gradient(135deg,#fff8e6,#fff3e0);border:1px solid var(--line);border-radius:16px;padding:8px 6px;}
+  .agenda-date-emoji{font-size:13px;}
+  #agendaDateLabel{font-weight:700;font-size:13px;}
+  .agenda-nav{background:none;border:none;color:var(--sub);cursor:pointer;font-size:16px;line-height:1;padding:2px 8px;border-radius:8px;}
   .agenda-nav:hover{color:var(--accent);background:var(--accent-soft);}
   .agenda-row{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:13px;}
   .agenda-row:last-child{border-bottom:none;}
@@ -175,7 +183,10 @@
   .ag-someday-row{cursor:grab;}
   .ag-someday-row.dragging{cursor:grabbing;}
   .agenda-time{color:var(--sub);font-size:12px;width:36px;flex-shrink:0;}
-  .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 6px;flex-shrink:0;}
+  .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 8px;flex-shrink:0;font-weight:700;}
+  .agenda-tag.kind-event{color:#c9457a;background:#ffe3ee;}
+  .agenda-tag.kind-habit{color:#1c8a5a;background:#e3f9ee;}
+  .agenda-tag.kind-todo{color:#2f6fed;background:#e6f3ff;}
   .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* ── 집 : 오늘 열의 타임블럭/타임라인(습관+일정 통합, 드래그로 이동/조절 가능) ── */
@@ -365,10 +376,13 @@
 
         <div class="home-grid3">
           <div class="home-col">
-            <div class="section-label agenda-head">
-              <button id="agendaPrevBtn" class="agenda-nav">◀</button>
-              <span id="agendaDateLabel" style="cursor:pointer;">오늘</span>
-              <button id="agendaNextBtn" class="agenda-nav">▶</button>
+            <div class="ag-header-row">
+              <div class="agenda-head">
+                <button id="agendaPrevBtn" class="agenda-nav">‹</button>
+                <span class="agenda-date-emoji">📅</span><span id="agendaDateLabel" style="cursor:pointer;">오늘</span>
+                <button id="agendaNextBtn" class="agenda-nav">›</button>
+              </div>
+              <button id="agendaTodayBtn" class="today-btn">오늘 🌸</button>
             </div>
 
             <div class="view-toggle-row" style="margin-top:10px;">
@@ -376,11 +390,10 @@
                 <button id="agendaViewBlockBtn" class="active">타임블럭</button>
                 <button id="agendaViewTimelineBtn">타임라인</button>
               </div>
-              <button id="agendaTodayBtn" class="today-btn">오늘</button>
             </div>
 
             <div class="ag-section-head" style="margin-top:10px;">
-              <span class="label">하루종일</span>
+              <span class="label"><span class="ag-dot" style="background:#b98cf0;"></span>🌤 하루종일</span>
               <span class="count" id="agendaAllDayCount" style="display:none;"></span>
             </div>
             <div id="agendaAllDayZone">
@@ -1057,6 +1070,18 @@
     await toggleHabitForDate(taskId, checked, todayStr());
   }
 
+  // 타임블럭 이름표별 점 색상·이모지(사용자 스크린샷 시안 참고, 장식용 — tok_time_blocks에 실제 색상 컬럼은 없음)
+  const AG_BLOCK_STYLE = {
+    "하루종일": { dot: "#b98cf0", icon: "🌤" },
+    "아침": { dot: "#7fc98f", icon: "🌱" },
+    "오전": { dot: "#8ab4f8", icon: "🔮" },
+    "오후": { dot: "#f5b26a", icon: "☀️" },
+    "저녁": { dot: "#f28ba0", icon: "🌇" },
+    "밤": { dot: "#7d8cd6", icon: "🌙" },
+  };
+  function agBlockStyle(title) { return AG_BLOCK_STYLE[title] || { dot: "var(--accent)", icon: "🕐" }; }
+  function agCheckWrap(inner) { return `<span class="agenda-check-wrap">${inner}<span class="agenda-check-mark">✓</span></span>`; }
+
   // "하루종일": 그 날짜에 걸친 할일(시간 없음) + 시간 없는 일정 + 시간 없는 습관
   async function renderAgendaAllDay() {
     const dateStr = homeAgendaDate;
@@ -1070,20 +1095,20 @@
     const rows = [
       ...dayUntimedEvents.map(e => `
         <div class="agenda-item-card ag-allday-row" data-id="${e.id}" data-kind="event">
-          <span class="agenda-tag">일정</span>
           <span class="agenda-title">${escapeHtml(e.title)}</span>
+          <span class="agenda-tag kind-event">일정</span>
         </div>`),
       ...untimedHabits.map(t => `
         <div class="agenda-item-card ag-allday-row ${doneSet.has(t.id) ? "done" : ""}" data-id="${t.id}" data-kind="habit">
-          <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="ag-habit-check agenda-item-check" />
-          <span class="agenda-tag">습관</span>
+          ${agCheckWrap(`<input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="ag-habit-check agenda-item-check" />`)}
           <span class="agenda-title">${escapeHtml(t.name)}</span>
+          <span class="agenda-tag kind-habit">습관</span>
         </div>`),
       ...dayTodos.map(td => `
         <div class="agenda-item-card ag-allday-row ${td.is_done ? "done" : ""}" data-id="${td.id}" data-kind="todo">
-          <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="agenda-todo-check agenda-item-check" />
-          <span class="agenda-tag">할일</span>
+          ${agCheckWrap(`<input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="agenda-todo-check agenda-item-check" />`)}
           <span class="agenda-title">${escapeHtml(td.title)}</span>
+          <span class="agenda-tag kind-todo">할일</span>
         </div>`),
     ];
     $("agendaAllDayList").innerHTML = rows.length ? rows.join("") : `<div class="agenda-empty-block">하루종일 항목이 없어요.</div>`;
@@ -1264,14 +1289,15 @@
 
   // 오늘 열의 타임블럭/타임라인은 보기+체크 전용(드래그 이동·조절은 습관 탭에서). 일정은 표시만.
   function agendaItemRowHtml(it) {
+    const lead = it.kind === "habit"
+      ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check agenda-item-check" />`)
+      : it.kind === "todo"
+      ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
+      : "";
     return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
-      ${it.kind === "habit"
-        ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check agenda-item-check" />`
-        : it.kind === "todo"
-        ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`
-        : `<span class="agenda-tag">일정</span>`}
+      ${lead}
       <span class="agenda-title">${escapeHtml(it.name)}</span>
-      <span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>
+      ${it.kind === "event" ? `<span class="agenda-tag kind-event">일정</span>` : `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>`}
     </div>`;
   }
 
@@ -1282,8 +1308,9 @@
       timeBlocks.forEach(block => {
         const inBlock = items.filter(it => it.start_minute >= block.start_minute && it.start_minute < block.end_minute);
         inBlock.forEach(it => covered.add(it));
+        const bs = agBlockStyle(block.title);
         html += `<div class="ag-section-head">
-          <span class="label">${escapeHtml(block.title)} <span style="color:var(--sub);font-weight:400;">${minutesToHHMM(block.start_minute)}–${minutesToHHMM(block.end_minute)}</span></span>
+          <span class="label"><span class="ag-dot" style="background:${bs.dot};"></span>${bs.icon} ${escapeHtml(block.title)} <span style="color:var(--sub);font-weight:400;">(${minutesToHHMM(block.start_minute)}~${minutesToHHMM(block.end_minute)})</span></span>
           ${inBlock.length ? `<span class="count">${inBlock.length}건</span>` : ""}
         </div>`;
         html += `<div class="agenda-flat ag-block-card" data-block-start="${block.start_minute}">${inBlock.length ? inBlock.map(agendaItemRowHtml).join("") : '<div class="agenda-empty-block">일정 없음</div>'}</div>`;
