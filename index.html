@@ -98,11 +98,8 @@
   .ag-section-head .label{font-size:13px;color:var(--text);font-weight:700;}
   .ag-section-head .count{font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;font-weight:700;flex-shrink:0;}
   .ag-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;}
-  .agenda-check-wrap{position:relative;width:20px;height:20px;flex-shrink:0;display:inline-flex;}
-  .agenda-item-check{appearance:none;-webkit-appearance:none;margin:0;width:20px;height:20px;border-radius:6px;border:2px solid var(--line);background:#fff;cursor:pointer;}
-  .agenda-item-check:checked{background:#4a90e2;border-color:#4a90e2;}
-  .agenda-check-mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;pointer-events:none;opacity:0;}
-  .agenda-item-check:checked ~ .agenda-check-mark{opacity:1;}
+  /* 하루종일·타임블럭 체크박스: 다가오는 계획과 같은 네이티브 체크박스+accent-color 방식(옆의 일정 네모와 크기만 20px로 맞춤). */
+  .ag-allday-row input[type=checkbox],.ag-block-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .ag-block-row.done .agenda-title,.ag-allday-row.done .agenda-title{color:var(--sub);text-decoration:line-through;}
   .agenda-empty-block{padding:14px;border-radius:14px;border:1px dashed var(--line);color:var(--sub);font-size:12px;text-align:center;}
   /* 체크박스와 같은 네모 모양·크기·간격으로 통일(할일/습관은 체크박스로 토글, 일정은 늘 범주색으로 차 있는 네모). */
@@ -147,6 +144,17 @@
   .inline-add-input{width:100%;padding:5px 7px;border:1px solid var(--accent);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;}
   .tl-inline-add{padding:0 4px;}
   .tl-inline-add .inline-add-input{padding:2px 6px;font-size:12px;}
+  /* 인라인 추가 입력창 옆 날짜/반복 아이콘(2026-09-06 결님 요청) — 입력 중에 바로 날짜·반복을 지정할 수 있게 함. */
+  .inline-add-wrap{display:flex;align-items:center;gap:4px;}
+  .inline-add-wrap .inline-add-input{width:auto;flex:1;min-width:0;}
+  .qa-icons{display:flex;gap:2px;flex-shrink:0;}
+  .qa-icon{width:24px;height:24px;border:none;background:transparent;border-radius:6px;font-size:13px;line-height:1;cursor:pointer;color:var(--sub);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .qa-icon:hover{background:var(--accent-soft);}
+  .qa-icon.active{background:var(--accent-soft);color:var(--accent);}
+  .tl-inline-add .qa-icon{width:18px;height:18px;font-size:11px;}
+  .qa-popover{position:fixed;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:8px;display:flex;gap:6px;align-items:center;}
+  .qa-popover select,.qa-popover input{font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-family:inherit;}
+  .qa-popover input[type=number]{width:48px;}
 
   /* ── 클릭=수정, 오른쪽클릭=삭제 메뉴 ── */
   .todo-row .name, .event-row .title, .someday-title, .plan-row.todo .plan-todo-title{cursor:pointer;}
@@ -1388,16 +1396,16 @@
     if (homeAgendaDate === dateStr) await renderAgendaTimed();
     await renderPlanUpcomingBoard();
   }
-  // 타임블럭 이름표별 점 색상·이모지(사용자 스크린샷 시안 참고, 장식용 — tok_time_blocks에 실제 색상 컬럼은 없음)
+  // 타임블럭 이름표별 점 색상(사용자 스크린샷 시안 참고, 장식용 — tok_time_blocks에 실제 색상 컬럼은 없음). 이모지는 2026-09-06 결님 요청으로 제거.
   const AG_BLOCK_STYLE = {
-    "하루종일": { dot: "#b98cf0", icon: "🌤" },
-    "아침": { dot: "#7fc98f", icon: "🌱" },
-    "오전": { dot: "#8ab4f8", icon: "🔮" },
-    "오후": { dot: "#f5b26a", icon: "☀️" },
-    "저녁": { dot: "#f28ba0", icon: "🌇" },
-    "밤": { dot: "#7d8cd6", icon: "🌙" },
+    "하루종일": { dot: "#b98cf0" },
+    "아침": { dot: "#7fc98f" },
+    "오전": { dot: "#8ab4f8" },
+    "오후": { dot: "#f5b26a" },
+    "저녁": { dot: "#f28ba0" },
+    "밤": { dot: "#7d8cd6" },
   };
-  function agBlockStyle(title) { return AG_BLOCK_STYLE[title] || { dot: "var(--accent)", icon: "🕐" }; }
+  function agBlockStyle(title) { return AG_BLOCK_STYLE[title] || { dot: "var(--accent)" }; }
   // 항목의 태그/범주 색상(습관·할일은 공용 태그 풀 habitCategories, 일정은 별도 eventCategories에서 찾음)
   function itemTagPool(kind) { return kind === "event" ? eventCategories : habitCategories; }
   function itemTagColor(kind, catId) {
@@ -1418,7 +1426,83 @@
   }
   // 다가오는 계획 각 날짜 점 색상(장식용, 항목 있는 날만 색이 돌아가며 붙고 빈 날은 회색)
   const PLAN_DAY_DOTS = ["#4a90e2", "#f5a742", "#a56cf0", "#3fae6a", "#e2678a"];
-  function agCheckWrap(inner) { return `<span class="agenda-check-wrap">${inner}<span class="agenda-check-mark">✓</span></span>`; }
+
+  // 인라인 추가 입력창 옆에 날짜(📅)/반복(🔁) 아이콘을 붙여줌(2026-09-06 결님 요청) — 입력하는 중에 바로
+  // 기본 날짜를 다른 날로 바꾸거나 반복을 걸 수 있게 함(안 누르면 기존처럼 기본 날짜·반복없음으로 저장됨).
+  // wrap: 아이콘을 붙일 flex 컨테이너(안에 input이 있어야 함). defaultDate: 날짜 팝오버 초기값.
+  // insertBeforeEl: 지정하면 그 앞에 아이콘을 끼워넣음(예: 이미 "추가" 버튼이 있는 줄), 없으면 맨 뒤에 붙임.
+  // 반환값 getPatch()로 사용자가 고른 값을 읽어서 insert 시 합치면 됨({start_date?, repeat_unit?, repeat_interval?}).
+  function attachQuickAddIcons(wrap, defaultDate, insertBeforeEl) {
+    const state = { date: null, repeat_unit: null, repeat_interval: 1 };
+    const iconsEl = document.createElement("span");
+    iconsEl.className = "qa-icons";
+    iconsEl.innerHTML = `
+      <button type="button" class="qa-icon qa-date-btn" title="날짜 지정">📅</button>
+      <button type="button" class="qa-icon qa-repeat-btn" title="반복 설정">🔁</button>`;
+    if (insertBeforeEl) wrap.insertBefore(iconsEl, insertBeforeEl); else wrap.appendChild(iconsEl);
+    const dateBtn = iconsEl.querySelector(".qa-date-btn");
+    const repeatBtn = iconsEl.querySelector(".qa-repeat-btn");
+
+    const closePopover = () => { document.querySelector(".qa-popover")?.remove(); };
+    const openPopover = (anchorBtn, innerHtml, onOpen) => {
+      closePopover();
+      const pop = document.createElement("div");
+      pop.className = "qa-popover";
+      pop.innerHTML = innerHtml;
+      document.body.appendChild(pop);
+      const r = anchorBtn.getBoundingClientRect();
+      pop.style.top = `${r.bottom + 4}px`;
+      pop.style.left = `${Math.min(r.left, window.innerWidth - 190)}px`;
+      onOpen?.(pop);
+      setTimeout(() => {
+        const outside = (e) => {
+          if (pop.contains(e.target) || e.target === anchorBtn) return;
+          pop.remove();
+          document.removeEventListener("pointerdown", outside, true);
+        };
+        document.addEventListener("pointerdown", outside, true);
+      }, 0);
+    };
+
+    dateBtn.onclick = (e) => {
+      e.stopPropagation(); e.preventDefault();
+      openPopover(dateBtn, `<input type="date" class="qa-date-input" value="${state.date || defaultDate}" />`, (pop) => {
+        const dInput = pop.querySelector("input");
+        dInput.focus();
+        dInput.onchange = () => {
+          state.date = dInput.value || null;
+          dateBtn.classList.toggle("active", !!state.date && state.date !== defaultDate);
+        };
+      });
+    };
+    repeatBtn.onclick = (e) => {
+      e.stopPropagation(); e.preventDefault();
+      openPopover(repeatBtn, `
+        <select class="qa-repeat-unit">
+          <option value="">반복 없음</option>
+          <option value="day">일마다</option>
+          <option value="week">주마다</option>
+          <option value="month">개월마다</option>
+        </select>
+        <input type="number" min="1" class="qa-repeat-interval" value="${state.repeat_interval}" />`, (pop) => {
+        const unitSel = pop.querySelector(".qa-repeat-unit");
+        const intInput = pop.querySelector(".qa-repeat-interval");
+        unitSel.value = state.repeat_unit || "";
+        unitSel.onchange = () => { state.repeat_unit = unitSel.value || null; repeatBtn.classList.toggle("active", !!state.repeat_unit); };
+        intInput.onchange = () => { state.repeat_interval = parseInt(intInput.value, 10) || 1; };
+      });
+    };
+
+    return {
+      getPatch() {
+        const patch = {};
+        if (state.date) patch.start_date = state.date;
+        if (state.repeat_unit) { patch.repeat_unit = state.repeat_unit; patch.repeat_interval = state.repeat_interval; }
+        return patch;
+      },
+      close: closePopover,
+    };
+  }
 
   // "하루종일": 그 날짜에 걸친 할일(시간 없음) + 시간 없는 일정 + 시간 없는 습관
   async function renderAgendaAllDay() {
@@ -1438,12 +1522,12 @@
         </div>`),
       ...untimedHabits.map(t => `
         <div class="plan-row ag-allday-row ${doneSet.has(t.id) ? "done" : ""}" data-id="${t.id}" data-kind="habit">
-          ${agCheckWrap(`<input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="ag-habit-check agenda-item-check" />`)}
+          <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="ag-habit-check" />
           <span class="agenda-title">${escapeHtml(t.name)}</span>
         </div>`),
       ...dayTodos.map(td => `
         <div class="plan-row ag-allday-row ${td.is_done ? "done" : ""}" data-id="${td.id}" data-kind="todo">
-          ${agCheckWrap(`<input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="agenda-todo-check agenda-item-check" />`)}
+          <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="agenda-todo-check" />
           <span class="agenda-title">${escapeHtml(td.title)}</span>
         </div>`),
     ];
@@ -1477,20 +1561,24 @@
     const row = document.querySelector('#agendaAllDayList .block-add-row[data-alladd]');
     if (!row) return;
     const openInput = () => {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "inline-add-input";
-      input.placeholder = "할일 이름";
-      row.replaceWith(input);
+      const wrap = document.createElement("div");
+      wrap.className = "inline-add-wrap";
+      wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
+      row.replaceWith(wrap);
+      const input = wrap.querySelector("input");
+      const qa = attachQuickAddIcons(wrap, homeAgendaDate);
       input.focus();
       let done = false;
       const commit = async (reopen) => {
         if (done) return;
         const name = input.value.trim();
-        if (!name) { done = true; renderAgendaAllDay(); return; }
+        if (!name) { done = true; qa.close(); renderAgendaAllDay(); return; }
         done = true;
+        qa.close();
+        const patch = qa.getPatch();
         const { error } = await sb.from("tok_todos").insert({
-          title: name, start_date: homeAgendaDate, todo_time: null,
+          title: name, start_date: patch.start_date || homeAgendaDate, todo_time: null,
+          repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
         });
         if (error) { alert("저장 실패: " + error.message); done = false; return; }
         await loadAll();
@@ -1678,9 +1766,9 @@
   // 오늘 열 타임블럭(카드형) 항목: 짧게 클릭하면 이름 수정, 드래그하면 다른 블럭으로 이동.
   function agendaItemRowHtml(it) {
     const lead = it.kind === "habit"
-      ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check agenda-item-check" />`)
+      ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
       : it.kind === "todo"
-      ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
+      ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
       : eventDotHtml(it.cat_id); // 일정은 체크박스 자리에 범주색 네모로 대신 표시
     // 항목마다 카드처럼 보여서 공간을 너무 차지한다고 해서, 다가오는 계획 목록과 똑같이 카드 없는 플랫한 한 줄로 변경.
     return `<div class="plan-row ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
@@ -1699,7 +1787,7 @@
         inBlock.forEach(it => covered.add(it));
         const bs = agBlockStyle(block.title);
         html += `<div class="ag-section-head">
-          <span class="label"><span class="ag-dot" style="background:${bs.dot};"></span>${bs.icon} ${escapeHtml(block.title)} <span style="color:var(--sub);font-weight:400;">(${minutesToHHMM(block.start_minute)}~${minutesToHHMM(block.end_minute)})</span></span>
+          <span class="label"><span class="ag-dot" style="background:${bs.dot};"></span>${escapeHtml(block.title)} <span style="color:var(--sub);font-weight:400;">(${minutesToHHMM(block.start_minute)}~${minutesToHHMM(block.end_minute)})</span></span>
           ${inBlock.length ? `<span class="count">${inBlock.length}건</span>` : ""}
         </div>`;
         // 비어있을 땐 "일정 없음" 안내문구 자체가 곧 클릭해서 추가하는 빈칸(하루종일·언젠가와 동일 규칙),
@@ -1729,21 +1817,25 @@
     document.querySelectorAll(".block-add-row[data-block-start]").forEach(row => {
       const startMinute = parseInt(row.dataset.blockStart, 10);
       const openInput = () => {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "inline-add-input";
-        input.placeholder = "할일 이름";
-        row.replaceWith(input);
+        const wrap = document.createElement("div");
+        wrap.className = "inline-add-wrap";
+        wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
+        row.replaceWith(wrap);
+        const input = wrap.querySelector("input");
+        const qa = attachQuickAddIcons(wrap, homeAgendaDate);
         input.focus();
         let done = false;
         const commit = async (reopen) => {
           if (done) return;
           const name = input.value.trim();
-          if (!name) { done = true; renderAgendaTimed(); return; }
+          if (!name) { done = true; qa.close(); renderAgendaTimed(); return; }
           done = true;
+          qa.close();
+          const patch = qa.getPatch();
           const { error } = await sb.from("tok_todos").insert({
-            title: name, start_date: homeAgendaDate,
+            title: name, start_date: patch.start_date || homeAgendaDate,
             todo_time: minutesToHHMM(startMinute) + ":00", duration_minutes: 30,
+            repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
           });
           if (error) { alert("저장 실패: " + error.message); done = false; return; }
           await loadAll();
@@ -2193,16 +2285,20 @@
     el.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
     content.appendChild(el);
     const input = el.querySelector("input");
+    const qa = attachQuickAddIcons(el, homeAgendaDate);
     input.focus();
     let done = false;
     const commit = async () => {
       if (done) return;
       const name = input.value.trim();
-      if (!name) { el.remove(); return; }
+      if (!name) { qa.close(); el.remove(); return; }
       done = true;
+      qa.close();
+      const patch = qa.getPatch();
       const { error } = await sb.from("tok_todos").insert({
-        title: name, start_date: homeAgendaDate,
+        title: name, start_date: patch.start_date || homeAgendaDate,
         todo_time: minutesToHHMM(startMinute) + ":00", duration_minutes: durationMinutes,
+        repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
       });
       if (error) { alert("저장 실패: " + error.message); done = false; return; }
       await loadAll();
@@ -2295,7 +2391,7 @@
         </div>`;
       }).join("");
       const todoHtml = dayTodos.map(td => `
-        <div class="plan-row todo planup-drag-row" data-id="${td.id}" data-kind="todo">
+        <div class="plan-row todo planup-drag-row ${td.is_done ? "done" : ""}" data-id="${td.id}" data-kind="todo">
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
           <span class="plan-todo-title planup-todo-title">${escapeHtml(td.title)}</span>
           ${td.todo_time ? `<span class="plan-time">${td.todo_time.slice(0, 5)}</span>` : ""}
@@ -2475,19 +2571,29 @@
     const row = document.querySelector('#somedaySummaryList .block-add-row[data-somedayadd]');
     if (!row) return;
     const openInput = () => {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "inline-add-input";
-      input.placeholder = "언젠가 할 일";
-      row.replaceWith(input);
+      const wrap = document.createElement("div");
+      wrap.className = "inline-add-wrap";
+      wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="언젠가 할 일" />`;
+      row.replaceWith(wrap);
+      const input = wrap.querySelector("input");
+      // 언젠가는 원래 날짜 개념이 없어서 기본값은 오늘 — 아이콘으로 날짜·반복을 지정하면 "언젠가"가 아니라
+      // 바로 날짜 있는 할일(tok_todos)로 만들어짐(드래그로 다가오는 계획에 옮길 때와 같은 방식).
+      const qa = attachQuickAddIcons(wrap, todayStr());
       input.focus();
       let done = false;
       const commit = async (reopen) => {
         if (done) return;
         const name = input.value.trim();
-        if (!name) { done = true; renderSomedaySummary(); return; }
+        if (!name) { done = true; qa.close(); renderSomedaySummary(); return; }
         done = true;
-        const { error } = await sb.from("tok_someday").insert({ title: name });
+        qa.close();
+        const patch = qa.getPatch();
+        const { error } = patch.start_date || patch.repeat_unit
+          ? await sb.from("tok_todos").insert({
+              title: name, start_date: patch.start_date || todayStr(),
+              repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
+            })
+          : await sb.from("tok_someday").insert({ title: name });
         if (error) { alert("저장 실패: " + error.message); done = false; return; }
         await loadAll();
         if (reopen) attachSomedayAddClick(true);
@@ -2914,9 +3020,23 @@
       };
     });
   }
+  // 할일 탭 자체의 "언젠가" 추가창에도 홈 카드와 동일하게 날짜/반복 아이콘을 붙임 — 처음 한 번만 붙이면 됨(정적 HTML이라 다시 렌더되지 않음).
+  const somedayTabQa = attachQuickAddIcons($("somedayInput").parentElement, todayStr(), $("somedayAddBtn"));
   $("somedayAddBtn").onclick = async () => {
     const title = $("somedayInput").value.trim();
     if (!title) return;
+    const patch = somedayTabQa.getPatch();
+    somedayTabQa.close();
+    if (patch.start_date || patch.repeat_unit) {
+      const { error } = await sb.from("tok_todos").insert({
+        title, start_date: patch.start_date || todayStr(),
+        repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
+      });
+      if (error) { alert("추가 실패: " + error.message); return; }
+      $("somedayInput").value = "";
+      await loadAll();
+      return;
+    }
     const { data, error } = await sb.from("tok_someday").insert({ title }).select().single();
     if (error) { alert("추가 실패: " + error.message); return; }
     somedayItems.push(data);
