@@ -97,7 +97,7 @@
   .ag-section-head .label{font-size:13px;color:var(--text);font-weight:700;}
   .ag-section-head .count{font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;font-weight:700;flex-shrink:0;}
   .ag-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;}
-  .agenda-item-card{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:6px;box-shadow:0 3px 10px rgba(150,130,200,.06);}
+  .agenda-item-card{display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:5px;box-shadow:0 3px 10px rgba(150,130,200,.06);}
   .agenda-item-card:last-child{margin-bottom:0;}
   .agenda-item-card.done{opacity:.55;}
   .agenda-item-card.done .agenda-title{text-decoration:line-through;color:var(--sub);}
@@ -163,8 +163,6 @@
   .home-col{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 6px 20px rgba(150,130,200,.08);}
   .home-col-head{margin-bottom:10px;}
   .home-col-head .title{font-size:13px;font-weight:700;color:var(--text);text-align:center;}
-  .home-col-head .hint-row{display:flex;justify-content:flex-end;margin-top:6px;}
-  .home-col-head .hint{font-size:13px;color:var(--accent);background:var(--accent-soft);font-weight:700;padding:8px 14px;border-radius:999px;}
   @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
 
   /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
@@ -407,7 +405,6 @@
           <div class="home-col">
             <div class="home-col-head">
               <div class="title">다가오는 계획</div>
-              <div class="hint-row"><span class="hint">이번 주 7일</span></div>
             </div>
             <div id="planUpcomingBoard"></div>
           </div>
@@ -1179,10 +1176,10 @@
     const cat = itemTagPool(kind).find(c => c.id === catId);
     return cat ? (cat.color || null) : null;
   }
-  // 태그/범주 색을 카드 배경으로 옅게 깔아줌(원색 그대로면 글자가 안 보여서 흰색과 섞어 파스텔톤으로)
+  // 태그/범주 색을 카드 배경으로 옅게 깔아줌(원색 그대로면 글자가 안 보여서 흰색과 섞어 파스텔톤으로), 태그 없으면 흰 배경 고정
   function itemTagBgStyle(kind, catId) {
     const color = itemTagColor(kind, catId);
-    if (!color) return "";
+    if (!color) return `background:var(--card);border-color:var(--line);`;
     return `background:color-mix(in srgb, ${color} 24%, var(--card));border-color:color-mix(in srgb, ${color} 50%, var(--line));`;
   }
   // 다가오는 계획 각 날짜 점 색상(장식용, 항목 있는 날만 색이 돌아가며 붙고 빈 날은 회색)
@@ -1218,7 +1215,8 @@
           <span class="agenda-tag kind-todo">할일</span>
         </div>`),
     ];
-    $("agendaAllDayList").innerHTML = rows.length ? rows.join("") : `<div class="agenda-empty-block">하루종일 항목이 없어요.</div>`;
+    $("agendaAllDayList").innerHTML = (rows.length ? rows.join("") : `<div class="agenda-empty-block">하루종일 항목이 없어요.</div>`)
+      + `<div class="block-add-row" data-alladd="1">+ 추가</div>`;
     const allDayCountEl = $("agendaAllDayCount");
     if (allDayCountEl) {
       allDayCountEl.style.display = rows.length ? "inline-block" : "none";
@@ -1235,6 +1233,38 @@
     });
     wireAgendaHabitChecks();
     attachAgendaAllDayDrag();
+    attachAgendaAllDayAddClick();
+  }
+
+  // 하루종일 영역 "+ 추가" 클릭 → 인라인 입력으로 시간 없는 할일 바로 생성(타임블럭의 block-add-row와 동일 패턴).
+  function attachAgendaAllDayAddClick() {
+    const row = document.querySelector('#agendaAllDayList .block-add-row[data-alladd]');
+    if (!row) return;
+    row.onclick = () => {
+      const wrap = document.createElement("div");
+      wrap.className = "block-add-row";
+      wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
+      row.replaceWith(wrap);
+      const input = wrap.querySelector("input");
+      input.focus();
+      let done = false;
+      const commit = async () => {
+        if (done) return;
+        const name = input.value.trim();
+        if (!name) { renderAgendaAllDay(); return; }
+        done = true;
+        const { error } = await sb.from("tok_todos").insert({
+          title: name, start_date: homeAgendaDate, todo_time: null,
+        });
+        if (error) { alert("저장 실패: " + error.message); done = false; return; }
+        await loadAll();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") { done = true; renderAgendaAllDay(); }
+      });
+      input.addEventListener("blur", commit);
+    };
   }
 
   // 집 페이지 3열(언젠가 / 다가오는 계획 / 오늘의 하루종일·타임블럭·타임라인) 전체를 아우르는
@@ -1349,12 +1379,16 @@
         el.classList.remove("dragging");
         curTarget?.classList.remove("drop-target");
         curTarget = null;
-        if (!wasMoved) return;
+        if (!wasMoved) { startAgendaItemInlineEdit(el, id, kind, renderAgendaAllDay); return; }
         const drop = homeDropZone(e.clientX, e.clientY);
         if (!drop || drop.zone === "today-allday") return; // 이미 하루종일이라 놓아도 변화 없음
         await moveItemToZone(kind, id, drop);
       };
       row.addEventListener("pointerup", finish);
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showAgendaItemMenu(e.clientX, e.clientY, row.dataset.kind, row.dataset.id);
+      };
       row.addEventListener("pointercancel", () => {
         dragEl?.classList.remove("dragging");
         curTarget?.classList.remove("drop-target");
@@ -1399,7 +1433,8 @@
       : it.kind === "todo"
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
       : "";
-    return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}" style="${itemTagBgStyle(it.kind, it.cat_id)}">
+    // 타임블럭(카드형) 뷰는 시간대 섹션으로 이미 구분되고 있어 태그색 배경 없이 항상 흰 배경으로 둠(색 구분은 타임라인 뷰에서만).
+    return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${lead}
       <span class="agenda-title">${escapeHtml(it.name)}</span>
       ${it.kind === "event" ? `<span class="agenda-tag kind-event">일정</span>` : `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>`}
@@ -1468,9 +1503,10 @@
     });
   }
 
-  // 오늘 열 타임블럭 항목 이름 인라인 수정(짧게 클릭 시 호출됨, 습관/할일/일정 공용)
-  function startAgendaItemInlineEdit(rowEl, id, kind) {
-    const titleEl = rowEl.querySelector(".agenda-title");
+  // 집 화면 항목 이름 인라인 수정(짧게 클릭 시 호출됨, 습관/할일/일정 공용, 하루종일·타임블럭·다가오는 계획 등 어디서든 재사용)
+  // onDone: 취소/무변경 시 그 자리를 원래 모습으로 되돌리기 위해 호출할 재렌더 함수(호출한 곳의 섹션에 맞게 넘겨줌)
+  function startAgendaItemInlineEdit(rowEl, id, kind, onDone = renderAgendaTimed) {
+    const titleEl = rowEl.querySelector(".agenda-title, .plan-todo-title");
     if (!titleEl) return;
     const current = titleEl.textContent;
     const input = document.createElement("input");
@@ -1483,7 +1519,7 @@
     const commit = async () => {
       if (done) return;
       const name = input.value.trim();
-      if (!name || name === current) { renderAgendaTimed(); return; }
+      if (!name || name === current) { onDone(); return; }
       done = true;
       const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
       const field = kind === "habit" ? "name" : "title";
@@ -1493,7 +1529,7 @@
     };
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); commit(); }
-      else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
+      else if (e.key === "Escape") { done = true; onDone(); }
     });
     input.addEventListener("blur", commit);
   }
@@ -1964,7 +2000,7 @@
       const dayHabits = active.filter(t => !t.repeat_unit || habitNextDate.get(t.id) === dateStr);
 
       const habitHtml = dayHabits.map(t => `
-        <div class="plan-row habit ${doneSet.has(t.id) ? "done" : ""}">
+        <div class="plan-row habit planup-drag-row ${doneSet.has(t.id) ? "done" : ""}" data-id="${t.id}" data-kind="habit">
           <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="planup-habit-check" />
           <span class="plan-todo-title">${escapeHtml(t.name)}</span>
         </div>`).join("");
@@ -2011,15 +2047,11 @@
         openTodoSheet(todos.find(t => t.id === id));
       };
     });
-    document.querySelectorAll("#planUpcomingBoard .plan-row.todo").forEach(row => {
+    // 오른쪽 클릭 메뉴(날짜 변경/태그·범주 변경/삭제) — 오늘 열과 동일하게, 습관·할일·일정 전부 공용 적용.
+    document.querySelectorAll("#planUpcomingBoard .plan-row[data-id]").forEach(row => {
       row.oncontextmenu = (e) => {
         e.preventDefault();
-        showDeleteMenu(e.clientX, e.clientY, async () => {
-          if (!confirm("이 할일을 삭제할까요?")) return;
-          const { error } = await sb.from("tok_todos").delete().eq("id", row.dataset.id);
-          if (error) { alert("삭제 실패: " + error.message); return; }
-          await loadAll();
-        });
+        showAgendaItemMenu(e.clientX, e.clientY, row.dataset.kind, row.dataset.id);
       };
     });
 
@@ -2065,7 +2097,12 @@
         row.classList.remove("dragging");
         curTarget?.classList.remove("drop-target");
         curTarget = null;
-        if (!wasMoved) return;
+        if (!wasMoved) {
+          // 할일은 이미 제목 클릭/연필 버튼으로 전체 수정 시트가 열리므로 건드리지 않고,
+          // 습관·일정만 다른 카드들과 동일하게 짧은 클릭 = 이름 인라인 수정으로 통일.
+          if (kind !== "todo") startAgendaItemInlineEdit(row, id, kind, renderPlanUpcomingBoard);
+          return;
+        }
         const drop = homeDropZone(e.clientX, e.clientY);
         await moveItemToZone(kind, id, drop);
       };
@@ -2099,7 +2136,7 @@
     const clearHighlight = () => board.querySelectorAll(".planup-day").forEach(el => el.classList.remove("drag-hi"));
 
     board.onpointerdown = (e) => {
-      if (e.target.closest(".planup-todo-check") || e.target.closest(".planup-todo-edit") || e.target.closest(".planup-todo-title") || e.target.closest(".planup-habit-check")) return;
+      if (e.target.closest(".planup-todo-check") || e.target.closest(".planup-todo-edit") || e.target.closest(".planup-todo-title") || e.target.closest(".planup-habit-check") || e.target.closest(".planup-drag-row")) return;
       const dayEl = e.target.closest(".planup-day");
       if (!dayEl) return;
       const startIdx = parseInt(dayEl.dataset.idx, 10);
