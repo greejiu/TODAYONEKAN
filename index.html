@@ -152,9 +152,11 @@
   /* ── 클릭=수정, 오른쪽클릭=삭제 메뉴 ── */
   .todo-row .name, .event-row .title, .someday-title, .plan-row.todo .plan-todo-title{cursor:pointer;}
   .todo-row .name:hover, .event-row .title:hover, .someday-title:hover, .plan-row.todo .plan-todo-title:hover{color:var(--accent);}
-  .ctx-menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:4px;z-index:30;}
+  .ctx-menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:4px;z-index:30;max-height:60vh;overflow-y:auto;}
   .ctx-menu button{display:block;width:100%;padding:8px 16px;border:none;background:none;color:var(--danger);font-size:13px;text-align:left;cursor:pointer;border-radius:6px;white-space:nowrap;}
   .ctx-menu button:hover{background:var(--bg);}
+  .ctx-menu button.default{color:var(--text);}
+  .ctx-menu button .ctx-tag-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
 
   /* ── 집 : 2열 레이아웃 (1열 습관 실행, 2열 다가오는 계획+언젠가 할일) ── */
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
@@ -476,6 +478,22 @@
 
         <div class="section-label" style="margin-top:20px;">테마</div>
         <div class="theme-grid" id="themeGrid"></div>
+
+        <div class="section-label" style="margin-top:20px;">태그 <span style="color:var(--sub);font-weight:400;">(할일·습관 공용)</span></div>
+        <div class="hs-cat-list" id="settingsTagList"></div>
+        <div class="field" style="display:flex;gap:6px;align-items:flex-end;">
+          <div style="flex:1;"><label>새 태그</label><input id="settingsTagName" type="text" placeholder="예: 집안일" /></div>
+          <input id="settingsTagColor" type="color" value="#9a8cf0" style="width:38px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;" />
+          <button class="btn-ghost" id="settingsTagAddBtn" type="button" style="flex:none;padding:0 12px;height:38px;">추가</button>
+        </div>
+
+        <div class="section-label" style="margin-top:20px;">범주 <span style="color:var(--sub);font-weight:400;">(일정 전용)</span></div>
+        <div class="hs-cat-list" id="settingsEventCatList"></div>
+        <div class="field" style="display:flex;gap:6px;align-items:flex-end;">
+          <div style="flex:1;"><label>새 범주</label><input id="settingsEventCatName" type="text" placeholder="예: 병원" /></div>
+          <input id="settingsEventCatColor" type="color" value="#4a90e2" style="width:38px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;" />
+          <button class="btn-ghost" id="settingsEventCatAddBtn" type="button" style="flex:none;padding:0 12px;height:38px;">추가</button>
+        </div>
       </div>
     </div>
   </div>
@@ -542,6 +560,36 @@
     </div>
   </div>
 </div>
+
+<!-- 집 화면 오른쪽 클릭 → 날짜 변경 시트(습관/할일/일정 공용, 항목 종류에 따라 보이는 항목이 달라짐) -->
+<div class="sheet-bg" id="itemDateSheetBg">
+  <div class="sheet">
+    <h2 id="idt_title">날짜 변경</h2>
+    <div class="field split" id="idt_date_row" style="display:none;">
+      <div><label id="idt_date_label">날짜</label><input id="idt_date" type="date" /></div>
+      <div id="idt_end_wrap"><label>종료 날짜(선택)</label><input id="idt_end" type="date" /></div>
+    </div>
+    <div class="field"><label>시간(선택)</label><input id="idt_time" type="time" /></div>
+    <div class="field split" id="idt_repeat_row" style="display:none;">
+      <div>
+        <label>반복</label>
+        <select id="idt_repeat_unit">
+          <option value="">반복 없음</option>
+          <option value="day">일마다</option>
+          <option value="week">주마다</option>
+          <option value="month">개월마다</option>
+        </select>
+      </div>
+      <div><label>주기(숫자)</label><input id="idt_repeat_interval" type="number" min="1" value="1" /></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="idt_cancel">취소</button>
+      <button class="btn-primary" id="idt_save">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 집 화면 오른쪽 클릭 → 태그/범주 변경(작은 선택 메뉴, ctx-menu 스타일 재사용) -->
 
 <!-- 습관 기록(히스토리) 보기 -->
 <div class="sheet-bg" id="habitHistoryBg">
@@ -624,7 +672,8 @@
   let somedayItems = [];
   let timeBlocks = []; // tok_time_blocks: 타임블럭 탭의 이름표 그룹핑용
   let todos = []; // tok_todos: 다가오는 계획 보드용 (날짜 있는 1회성 할일)
-  let habitCategories = []; // tok_habit_categories: 습관 카테고리(1단계, 이름+색상)
+  let habitCategories = []; // tok_habit_categories: 습관·할일 공용 "태그"(이름+색상) — 할일은 tag_id 컬럼으로 이 풀을 공유해서 씀
+  let eventCategories = []; // tok_event_categories: 일정 전용 "범주"(이름+색상), 태그 풀과는 별개
   let todoSubtasks = []; // tok_todo_subtasks: 지금 할일 카드에서 쓰는 하위 행동 목록
   let manualFocusTodoId = null; // "다른 할일로 바꾸기"로 수동 지정한 할일 id — 새로고침하면 자동 선택으로 리셋(세션 전용, DB 저장 안 함)
   let focusPickerOpen = false; // 지금 할일 카드가 "선택 목록" 모드인지
@@ -685,6 +734,7 @@
       { data: todoData, error: e7 },
       { data: habitCatData, error: e8 },
       { data: subtaskData, error: e9 },
+      { data: eventCatData, error: e10 },
     ] = await Promise.all([
       sb.from("tok_habits").select("*").order("start_minute", { nullsFirst: false }).order("created_at"),
       sb.from("tok_habit_logs").select("habit_id, done_date"),
@@ -694,8 +744,9 @@
       sb.from("tok_todos").select("*").order("start_date"),
       sb.from("tok_habit_categories").select("*").order("sort_order"),
       sb.from("tok_todo_subtasks").select("*").order("sort_order"),
+      sb.from("tok_event_categories").select("*").order("sort_order"),
     ]);
-    const firstError = e1 || e2 || e3 || e5 || e6 || e7 || e8 || e9;
+    const firstError = e1 || e2 || e3 || e5 || e6 || e7 || e8 || e9 || e10;
     if (firstError) { alert("불러오기 실패: " + firstError.message); return; }
     tasks = taskData || [];
     habitLogs = logData || []; // 전체 완료 이력(반복주기의 "마지막 완료일" 계산용)
@@ -706,10 +757,12 @@
     todos = todoData || [];
     habitCategories = habitCatData || [];
     todoSubtasks = subtaskData || []; // tok_todo_subtasks: 지금 할일 카드의 하위 행동
+    eventCategories = eventCatData || [];
     renderHome();
     renderSchedule();
     renderTodosPage();
     renderTodo();
+    renderSettingsTagLists();
   }
 
   // ── 집 : 지금 할 일 카드(onekan v1의 focus-task-card 참고, 할일 1개를 하위 행동으로 쪼개기) ──
@@ -1062,6 +1115,17 @@
     "밤": { dot: "#7d8cd6", icon: "🌙" },
   };
   function agBlockStyle(title) { return AG_BLOCK_STYLE[title] || { dot: "var(--accent)", icon: "🕐" }; }
+  // 항목의 태그/범주 색상(습관·할일은 공용 태그 풀 habitCategories, 일정은 별도 eventCategories에서 찾음)
+  function itemTagPool(kind) { return kind === "event" ? eventCategories : habitCategories; }
+  function itemTagColor(kind, catId) {
+    if (!catId) return null;
+    const cat = itemTagPool(kind).find(c => c.id === catId);
+    return cat ? (cat.color || null) : null;
+  }
+  function itemTagDotHtml(kind, catId) {
+    const color = itemTagColor(kind, catId);
+    return color ? `<span class="ag-dot" style="background:${color};"></span>` : "";
+  }
   // 다가오는 계획 각 날짜 점 색상(장식용, 항목 있는 날만 색이 돌아가며 붙고 빈 날은 회색)
   const PLAN_DAY_DOTS = ["#4a90e2", "#f5a742", "#a56cf0", "#3fae6a", "#e2678a"];
   function agCheckWrap(inner) { return `<span class="agenda-check-wrap">${inner}<span class="agenda-check-mark">✓</span></span>`; }
@@ -1250,17 +1314,17 @@
     const habitItems = active.map(t => ({
       kind: "habit", id: t.id, name: t.name,
       start_minute: t.start_minute, duration_minutes: t.duration_minutes || 30,
-      done: doneSet.has(t.id),
+      done: doneSet.has(t.id), cat_id: t.category_id,
     }));
     const dayEvents = events.filter(e => e.event_date === dateStr && e.event_time);
     const eventItems = dayEvents.map(e => ({
       kind: "event", id: e.id, name: e.title,
-      start_minute: hhmmToMinutes(e.event_time), duration_minutes: 30, done: false,
+      start_minute: hhmmToMinutes(e.event_time), duration_minutes: 30, done: false, cat_id: e.category_id,
     }));
     const dayTimedTodos = todos.filter(td => td.todo_time && td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
     const todoItems = dayTimedTodos.map(td => ({
       kind: "todo", id: td.id, name: td.title,
-      start_minute: hhmmToMinutes(td.todo_time.slice(0, 5)), duration_minutes: td.duration_minutes || 30, done: td.is_done,
+      start_minute: hhmmToMinutes(td.todo_time.slice(0, 5)), duration_minutes: td.duration_minutes || 30, done: td.is_done, cat_id: td.tag_id,
     }));
     return [...habitItems, ...eventItems, ...todoItems].sort((a, b) => a.start_minute - b.start_minute);
   }
@@ -1280,7 +1344,7 @@
       : "";
     return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${lead}
-      <span class="agenda-title">${escapeHtml(it.name)}</span>
+      <span class="agenda-title">${itemTagDotHtml(it.kind, it.cat_id)}${escapeHtml(it.name)}</span>
       ${it.kind === "event" ? `<span class="agenda-tag kind-event">일정</span>` : `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>`}
     </div>`;
   }
@@ -1420,6 +1484,10 @@
         curTarget?.classList.remove("drop-target");
         dragEl = null; dragId = null; dragKindAttr = null; moved = false; curTarget = null;
       });
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showAgendaItemMenu(e.clientX, e.clientY, row.dataset.kind, row.dataset.id);
+      };
     });
   }
 
@@ -1461,7 +1529,7 @@
           : it.kind === "todo"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
           : `<span class="agenda-tag">일정</span>`}
-        <span class="ag-tl-title">${escapeHtml(it.name)}</span>
+        <span class="ag-tl-title">${itemTagDotHtml(it.kind, it.cat_id)}${escapeHtml(it.name)}</span>
       </div>`;
     });
     $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}<div class="ag-tl-content">${itemsHtml}</div></div>`;
@@ -1684,6 +1752,10 @@
         clearHoverHint();
       });
       task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
+      task.oncontextmenu = (e) => {
+        e.preventDefault();
+        showAgendaItemMenu(e.clientX, e.clientY, kind, id);
+      };
     });
   }
 
@@ -2686,6 +2758,217 @@
       document.addEventListener("contextmenu", closeOnOutside);
     }, 0);
   }
+
+  function attachCtxMenuOutsideClose(menu) {
+    setTimeout(() => {
+      const closeOnOutside = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          document.removeEventListener("click", closeOnOutside);
+          document.removeEventListener("contextmenu", closeOnOutside);
+        }
+      };
+      document.addEventListener("click", closeOnOutside);
+      document.addEventListener("contextmenu", closeOnOutside);
+    }, 0);
+  }
+  function agendaItemById(kind, id) {
+    if (kind === "habit") return tasks.find(t => t.id === id);
+    if (kind === "todo") return todos.find(t => t.id === id);
+    return events.find(e => e.id === id);
+  }
+
+  // 집 화면 항목 오른쪽 클릭 메뉴: 날짜 변경 / 태그·범주 변경 / 삭제 (습관·할일·일정 공용, 일단 이 3개만)
+  function showAgendaItemMenu(x, y, kind, id) {
+    document.querySelector(".ctx-menu")?.remove();
+    const menu = document.createElement("div");
+    menu.className = "ctx-menu";
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+    const tagLabel = kind === "event" ? "범주 변경" : "태그 변경";
+    menu.innerHTML = `
+      <button type="button" class="default" data-act="date">날짜 변경</button>
+      <button type="button" class="default" data-act="tag">${tagLabel}</button>
+      <button type="button" data-act="delete">삭제</button>
+    `;
+    document.body.appendChild(menu);
+    menu.querySelector('[data-act="date"]').onclick = (e) => {
+      e.stopPropagation(); menu.remove();
+      openItemDateSheet(kind, id);
+    };
+    menu.querySelector('[data-act="tag"]').onclick = (e) => {
+      e.stopPropagation(); menu.remove();
+      showItemTagPicker(x, y, kind, id);
+    };
+    menu.querySelector('[data-act="delete"]').onclick = async (e) => {
+      e.stopPropagation(); menu.remove();
+      const item = agendaItemById(kind, id);
+      const label = item ? (item.name || item.title || "이 항목") : "이 항목";
+      if (!confirm(`"${label}"을(를) 삭제할까요?`)) return;
+      const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
+      const { error } = await sb.from(table).delete().eq("id", id);
+      if (error) { alert("삭제 실패: " + error.message); return; }
+      await loadAll();
+    };
+    attachCtxMenuOutsideClose(menu);
+  }
+
+  // 태그/범주 변경용 작은 선택 메뉴(ctx-menu 재사용) — 습관·할일은 공용 태그 풀, 일정은 별도 범주 풀에서 고름
+  function showItemTagPicker(x, y, kind, id) {
+    document.querySelector(".ctx-menu")?.remove();
+    const pool = itemTagPool(kind);
+    const menu = document.createElement("div");
+    menu.className = "ctx-menu";
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+    const noneBtn = `<button type="button" class="default" data-tag="">${kind === "event" ? "범주 없음" : "태그 없음"}</button>`;
+    const items = pool.map(c => `<button type="button" class="default" data-tag="${c.id}"><span class="ctx-tag-dot" style="background:${c.color || "var(--accent)"};"></span>${escapeHtml(c.name)}</button>`).join("");
+    menu.innerHTML = noneBtn + items;
+    document.body.appendChild(menu);
+    menu.querySelectorAll("button[data-tag]").forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        menu.remove();
+        const val = btn.dataset.tag || null;
+        const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
+        const field = kind === "todo" ? "tag_id" : "category_id";
+        const { error } = await sb.from(table).update({ [field]: val }).eq("id", id);
+        if (error) { alert("변경 실패: " + error.message); return; }
+        await loadAll();
+      };
+    });
+    attachCtxMenuOutsideClose(menu);
+  }
+
+  // 날짜/시간/반복 변경 시트: 습관은 날짜 개념이 없어 시간+반복만, 할일·일정은 날짜(+할일은 종료일)+시간만 보여줌
+  function openItemDateSheet(kind, id) {
+    const item = agendaItemById(kind, id);
+    if (!item) return;
+    const bg = $("itemDateSheetBg");
+    bg.dataset.kind = kind;
+    bg.dataset.editId = id;
+    $("idt_title").textContent = (kind === "habit" ? "습관" : kind === "todo" ? "할일" : "일정") + " 날짜/시간 변경";
+    $("idt_date_row").style.display = (kind === "todo" || kind === "event") ? "flex" : "none";
+    $("idt_end_wrap").style.display = kind === "todo" ? "block" : "none";
+    $("idt_repeat_row").style.display = kind === "habit" ? "flex" : "none";
+    $("idt_date_label").textContent = kind === "todo" ? "시작 날짜" : "날짜";
+    $("idt_date").value = "";
+    $("idt_end").value = "";
+    $("idt_time").value = "";
+    if (kind === "todo") {
+      $("idt_date").value = item.start_date || "";
+      $("idt_end").value = item.end_date || "";
+      $("idt_time").value = item.todo_time ? item.todo_time.slice(0, 5) : "";
+    } else if (kind === "event") {
+      $("idt_date").value = item.event_date || "";
+      $("idt_time").value = item.event_time ? item.event_time.slice(0, 5) : "";
+    } else {
+      $("idt_time").value = item.start_minute != null ? minutesToHHMM(item.start_minute) : "";
+      $("idt_repeat_unit").value = item.repeat_unit || "";
+      $("idt_repeat_interval").value = item.repeat_interval || 1;
+    }
+    bg.classList.add("open");
+  }
+  $("idt_cancel").onclick = () => $("itemDateSheetBg").classList.remove("open");
+  $("idt_save").onclick = async () => {
+    const bg = $("itemDateSheetBg");
+    const kind = bg.dataset.kind, id = bg.dataset.editId;
+    if (!id) return;
+    const timeVal = $("idt_time").value;
+    let patch = {};
+    if (kind === "todo") {
+      const startVal = $("idt_date").value;
+      if (!startVal) { alert("시작 날짜를 입력해주세요."); return; }
+      patch = { start_date: startVal, end_date: $("idt_end").value || null, todo_time: timeVal ? timeVal + ":00" : null };
+    } else if (kind === "event") {
+      const dateVal = $("idt_date").value;
+      if (!dateVal) { alert("날짜를 입력해주세요."); return; }
+      patch = { event_date: dateVal, event_time: timeVal ? timeVal + ":00" : null };
+    } else {
+      if (!timeVal) { alert("시간을 입력해주세요."); return; }
+      const repeat_unit = $("idt_repeat_unit").value || null;
+      patch = { start_minute: hhmmToMinutes(timeVal), repeat_unit, repeat_interval: repeat_unit ? (parseInt($("idt_repeat_interval").value, 10) || 1) : null };
+    }
+    const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
+    const { error } = await sb.from(table).update(patch).eq("id", id);
+    if (error) { alert("저장 실패: " + error.message); return; }
+    bg.classList.remove("open");
+    await loadAll();
+  };
+
+  // ── 설정 페이지: 태그(습관·할일 공용) / 범주(일정 전용) 관리 ──
+  function renderCategoryManageList(hostId, pool, table, onSaved) {
+    const host = $(hostId);
+    if (!host) return;
+    host.innerHTML = pool.length ? pool.map(c => `
+      <div class="hs-cat-row" data-id="${c.id}">
+        <input type="color" class="hs-cat-color-input" data-id="${c.id}" value="${c.color || "#9a8cf0"}" />
+        <input type="text" class="hs-cat-name-input" data-id="${c.id}" value="${escapeHtml(c.name)}" />
+        <button type="button" class="hs-cat-del" data-id="${c.id}" title="삭제">✕</button>
+      </div>
+    `).join("") : `<div class="empty" style="font-size:12px;padding:4px 0;">아직 없어요. 아래에서 추가해보세요.</div>`;
+    host.querySelectorAll(".hs-cat-color-input").forEach(inp => {
+      inp.onchange = async () => {
+        const id = inp.dataset.id, color = inp.value;
+        const { error } = await sb.from(table).update({ color }).eq("id", id);
+        if (error) { alert("색상 변경 실패: " + error.message); return; }
+        const cat = pool.find(c => c.id === id);
+        if (cat) cat.color = color;
+        onSaved?.();
+      };
+    });
+    host.querySelectorAll(".hs-cat-name-input").forEach(inp => {
+      const commit = async () => {
+        const id = inp.dataset.id, name = inp.value.trim();
+        const cat = pool.find(c => c.id === id);
+        if (!name) { inp.value = cat ? cat.name : ""; return; }
+        if (cat && cat.name === name) return;
+        const { error } = await sb.from(table).update({ name }).eq("id", id);
+        if (error) { alert("이름 변경 실패: " + error.message); return; }
+        if (cat) cat.name = name;
+        onSaved?.();
+      };
+      inp.onblur = commit;
+      inp.onkeydown = (e) => { if (e.key === "Enter") inp.blur(); };
+    });
+    host.querySelectorAll(".hs-cat-del").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.id;
+        const cat = pool.find(c => c.id === id);
+        if (!confirm(`"${cat ? cat.name : "항목"}"을 삭제할까요?`)) return;
+        const { error } = await sb.from(table).delete().eq("id", id);
+        if (error) { alert("삭제 실패: " + error.message); return; }
+        const idx = pool.findIndex(c => c.id === id);
+        if (idx >= 0) pool.splice(idx, 1);
+        renderCategoryManageList(hostId, pool, table, onSaved);
+        onSaved?.();
+      };
+    });
+  }
+  function renderSettingsTagLists() {
+    renderCategoryManageList("settingsTagList", habitCategories, "tok_habit_categories", () => { renderTodo(); renderAgendaTimed(); });
+    renderCategoryManageList("settingsEventCatList", eventCategories, "tok_event_categories", () => { renderSchedule(); renderAgendaTimed(); });
+  }
+  $("settingsTagAddBtn").onclick = async () => {
+    const name = $("settingsTagName").value.trim();
+    if (!name) { alert("태그 이름을 입력해주세요."); return; }
+    const color = $("settingsTagColor").value;
+    const { data, error } = await sb.from("tok_habit_categories").insert({ name, color, sort_order: habitCategories.length }).select().single();
+    if (error) { alert("태그 추가 실패: " + error.message); return; }
+    habitCategories.push(data);
+    $("settingsTagName").value = "";
+    renderSettingsTagLists();
+  };
+  $("settingsEventCatAddBtn").onclick = async () => {
+    const name = $("settingsEventCatName").value.trim();
+    if (!name) { alert("범주 이름을 입력해주세요."); return; }
+    const color = $("settingsEventCatColor").value;
+    const { data, error } = await sb.from("tok_event_categories").insert({ name, color, sort_order: eventCategories.length }).select().single();
+    if (error) { alert("범주 추가 실패: " + error.message); return; }
+    eventCategories.push(data);
+    $("settingsEventCatName").value = "";
+    renderSettingsTagLists();
+  };
 
   boot();
 </script>
