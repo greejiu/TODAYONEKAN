@@ -59,10 +59,6 @@
   .section-label:first-child{margin-top:0;}
 
   /* ── 집 : 진행률 ── */
-  .progress-wrap{background:linear-gradient(135deg,#ffe3ee,#e6f3ff 55%,#e3f9ee);border:1px solid var(--line);border-radius:20px;padding:18px 16px;margin-bottom:6px;}
-  .progress-text{font-size:14px;color:var(--text);font-weight:600;margin-bottom:8px;}
-  .progress-bar{height:8px;background:rgba(255,255,255,.6);border-radius:999px;overflow:hidden;}
-  .progress-fill{height:100%;background:linear-gradient(90deg,#f6a8c7,#9a8cf0);border-radius:999px;transition:width .25s;}
 
   /* ── 집 : 다가오는 일정 ── */
   .upcoming-row{display:flex;align-items:baseline;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;}
@@ -210,6 +206,7 @@
   .ag-tl-task::after{bottom:2px;}
   .ag-tl-task.edge-hover-top::before{opacity:.6;}
   .ag-tl-task.edge-hover-bottom::after{opacity:.6;}
+  .ag-tl-add-preview{position:absolute;left:0;right:4px;background:rgba(154,140,240,.18);border:2px dashed var(--accent);border-radius:8px;pointer-events:none;z-index:2;}
 
   /* ── 집 : 다가오는 계획 (7일 보드, 습관 탭의 #planBoard와는 별도 인스턴스) ── */
   .planup-day{padding:8px 4px;border-bottom:1px solid var(--line);touch-action:none;}
@@ -373,11 +370,6 @@
       <div class="page" data-page="home">
         <div class="pagehead"><h2>🏠 집</h2></div>
 
-        <div class="progress-wrap">
-          <div class="progress-text" id="homeProgressText">오늘 0/0 완료</div>
-          <div class="progress-bar"><div class="progress-fill" id="homeProgressFill" style="width:0%"></div></div>
-        </div>
-
         <div class="focus-card card" id="focusTaskCard">
           <div class="focus-head"><span id="focusTaskTitle">지금 할 일</span></div>
           <div id="focusTaskBody"></div>
@@ -464,15 +456,7 @@
       <div class="page" data-page="todo" style="display:none;">
         <div class="pagehead"><h2>⟳ 습관</h2></div>
 
-        <div class="section-label">🕒 오늘의 습관</div>
-        <div class="view-toggle">
-          <button id="viewListBtn" class="active">타임블럭</button>
-          <button id="viewTimelineBtn">타임라인</button>
-        </div>
-        <div id="timelineWrap"></div>
-        <div id="homeEmpty" class="empty" style="display:none;"></div>
-
-        <div class="section-label" style="margin-top:20px;">습관 관리</div>
+        <div class="section-label">습관 관리</div>
         <div class="inline-add-row">
           <input id="tk_name" type="text" placeholder="습관 이름" />
           <input id="tk_start" type="time" />
@@ -646,7 +630,6 @@
   let focusPickerOpen = false; // 지금 할일 카드가 "선택 목록" 모드인지
   let habitLogs = []; // tok_habit_logs 전체({habit_id, done_date}) — 반복주기 "마지막 완료일" 계산용
   let currentPage = "home";
-  let homeView = "list"; // "list" | "timeline"
 
   // ── 인증 ──
   $("loginBtn").onclick = async () => {
@@ -727,14 +710,6 @@
     renderSchedule();
     renderTodosPage();
     renderTodo();
-  }
-
-  // ── 집 : 진행률 ──
-  function renderProgress() {
-    const active = tasks.filter(t => t.is_active && isHabitDueOnDate(t, todayStr(), logsToday.has(t.id)));
-    const doneCount = active.filter(t => logsToday.has(t.id)).length;
-    $("homeProgressText").textContent = `오늘 ${doneCount}/${active.length} 완료`;
-    $("homeProgressFill").style.width = active.length ? `${Math.round(doneCount/active.length*100)}%` : "0%";
   }
 
   // ── 집 : 지금 할 일 카드(onekan v1의 focus-task-card 참고, 할일 1개를 하위 행동으로 쪼개기) ──
@@ -924,7 +899,6 @@
 
   // ── 집 : 오늘 한눈에 보기(2026-09-05 재개편 — 다가오는 일정 카드 제거, 오늘 열에 습관도 통합) ──
   function renderHome() {
-    renderProgress();
     renderFocusCard();
     renderAgendaAllDay();
     renderAgendaTimed();
@@ -1078,10 +1052,6 @@
     if (homeAgendaDate === dateStr) await renderAgendaTimed();
     await renderPlanUpcomingBoard();
   }
-  async function toggleToday(taskId, checked) {
-    await toggleHabitForDate(taskId, checked, todayStr());
-  }
-
   // 타임블럭 이름표별 점 색상·이모지(사용자 스크린샷 시안 참고, 장식용 — tok_time_blocks에 실제 색상 컬럼은 없음)
   const AG_BLOCK_STYLE = {
     "하루종일": { dot: "#b98cf0", icon: "🌤" },
@@ -1301,7 +1271,7 @@
     else renderAgendaBlocks(items);
   }
 
-  // 오늘 열의 타임블럭/타임라인은 보기+체크 전용(드래그 이동·조절은 습관 탭에서). 일정은 표시만.
+  // 오늘 열 타임블럭(카드형) 항목: 짧게 클릭하면 이름 수정, 드래그하면 다른 블럭으로 이동.
   function agendaItemRowHtml(it) {
     const lead = it.kind === "habit"
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check agenda-item-check" />`)
@@ -1327,7 +1297,7 @@
           <span class="label"><span class="ag-dot" style="background:${bs.dot};"></span>${bs.icon} ${escapeHtml(block.title)} <span style="color:var(--sub);font-weight:400;">(${minutesToHHMM(block.start_minute)}~${minutesToHHMM(block.end_minute)})</span></span>
           ${inBlock.length ? `<span class="count">${inBlock.length}건</span>` : ""}
         </div>`;
-        html += `<div class="agenda-flat ag-block-card" data-block-start="${block.start_minute}">${inBlock.length ? inBlock.map(agendaItemRowHtml).join("") : '<div class="agenda-empty-block">일정 없음</div>'}</div>`;
+        html += `<div class="agenda-flat ag-block-card" data-block-start="${block.start_minute}">${inBlock.length ? inBlock.map(agendaItemRowHtml).join("") : '<div class="agenda-empty-block">일정 없음</div>'}<div class="block-add-row" data-block-start="${block.start_minute}">+ 추가</div></div>`;
       });
       const uncovered = items.filter(it => !covered.has(it));
       if (uncovered.length) {
@@ -1340,6 +1310,71 @@
     $("agendaTimeWrap").innerHTML = html || `<div class="empty" style="padding:20px 0;font-size:12px;">시간이 있는 항목이 없어요.</div>`;
     wireAgendaHabitChecks();
     attachAgendaBlockDrag();
+    attachAgendaBlockAddClick();
+  }
+
+  // 블럭 카드 아래 "+ 추가"를 누르면 팝업 없이 그 자리에서 바로 할일을 입력할 수 있게 함
+  // (해당 블럭의 시작 시각으로 저장됨, 소요시간은 기본 30분).
+  function attachAgendaBlockAddClick() {
+    document.querySelectorAll(".block-add-row[data-block-start]").forEach(row => {
+      row.onclick = () => {
+        const startMinute = parseInt(row.dataset.blockStart, 10);
+        const wrap = document.createElement("div");
+        wrap.className = "block-add-row";
+        wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
+        row.replaceWith(wrap);
+        const input = wrap.querySelector("input");
+        input.focus();
+        let done = false;
+        const commit = async () => {
+          if (done) return;
+          const name = input.value.trim();
+          if (!name) { renderAgendaTimed(); return; }
+          done = true;
+          const { error } = await sb.from("tok_todos").insert({
+            title: name, start_date: homeAgendaDate,
+            todo_time: minutesToHHMM(startMinute) + ":00", duration_minutes: 30,
+          });
+          if (error) { alert("저장 실패: " + error.message); done = false; return; }
+          await loadAll();
+        };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
+        });
+        input.addEventListener("blur", commit);
+      };
+    });
+  }
+
+  // 오늘 열 타임블럭 항목 이름 인라인 수정(짧게 클릭 시 호출됨, 습관/할일/일정 공용)
+  function startAgendaItemInlineEdit(rowEl, id, kind) {
+    const titleEl = rowEl.querySelector(".agenda-title");
+    if (!titleEl) return;
+    const current = titleEl.textContent;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "inline-add-input";
+    input.value = current;
+    titleEl.replaceWith(input);
+    input.focus(); input.select();
+    let done = false;
+    const commit = async () => {
+      if (done) return;
+      const name = input.value.trim();
+      if (!name || name === current) { renderAgendaTimed(); return; }
+      done = true;
+      const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
+      const field = kind === "habit" ? "name" : "title";
+      const { error } = await sb.from(table).update({ [field]: name }).eq("id", id);
+      if (error) { alert("수정 실패: " + error.message); done = false; return; }
+      await loadAll();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
+    });
+    input.addEventListener("blur", commit);
   }
 
   // 오늘 열 타임블럭(카드형) 보기: 습관·일정 행을 다른 블럭 카드 위로 드래그하면
@@ -1375,7 +1410,7 @@
         el.classList.remove("dragging");
         curTarget?.classList.remove("drop-target");
         curTarget = null;
-        if (!wasMoved) return;
+        if (!wasMoved) { startAgendaItemInlineEdit(el, id, kind); return; }
         const drop = homeDropZone(e.clientX, e.clientY);
         await moveItemToZone(kind, id, drop);
       };
@@ -1389,6 +1424,8 @@
   }
 
   const AG_TL_SLOT_MIN = 15, AG_TL_ROW_PX = 13;
+  const TL_LONG_PRESS_MS = 300;
+  const TL_EDGE_ZONE_PX = 8;
   function renderAgendaTimeline(items) {
     let minM = 360, maxM = 1440;
     items.forEach(it => {
@@ -1430,6 +1467,7 @@
     $("agendaTimeWrap").innerHTML = `<div class="ag-tl-grid" style="grid-template-rows:repeat(${slotCount},${AG_TL_ROW_PX}px)">${rowsHtml}<div class="ag-tl-content">${itemsHtml}</div></div>`;
     wireAgendaHabitChecks();
     attachAgendaTimelineItemDrag(minM);
+    attachAgendaTimelineAddDrag(minM, slotCount);
   }
 
   // 시간이 겹치는 항목끼리 열(column)을 나눠 배정. 겹치는 구간(cluster) 안에서 동시에 떠있던
@@ -1647,6 +1685,89 @@
       });
       task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
     });
+  }
+
+  // 오늘 열 타임라인 빈 곳을 클릭하거나 드래그하면 그 시각(또는 드래그한 범위)에 바로 할일이 추가됨
+  // (습관 탭에 있던 기능을 집 화면으로 옮김 — 반복 설정이 필요한 습관은 여전히 습관 탭에서 추가).
+  let agAddState = null;
+  function attachAgendaTimelineAddDrag(minM, slotCount) {
+    const content = document.querySelector("#agendaTimeWrap .ag-tl-content");
+    if (!content) return;
+
+    const slotFromEvent = (e) => {
+      const rect = content.getBoundingClientRect();
+      const y = (e.clientY ?? (e.touches && e.touches[0]?.clientY)) - rect.top;
+      const slot = Math.floor(y / AG_TL_ROW_PX);
+      return Math.max(0, Math.min(slotCount - 1, slot));
+    };
+
+    content.onpointerdown = (e) => {
+      if (e.target.closest(".ag-tl-task")) return;
+      const startSlot = slotFromEvent(e);
+      agAddState = { startSlot, currentSlot: startSlot, moved: false };
+      const preview = document.createElement("div");
+      preview.className = "ag-tl-add-preview";
+      preview.id = "agTlAddPreview";
+      preview.style.top = `${startSlot * AG_TL_ROW_PX}px`;
+      preview.style.height = `${AG_TL_ROW_PX}px`;
+      content.appendChild(preview);
+      content.setPointerCapture?.(e.pointerId);
+    };
+    content.onpointermove = (e) => {
+      if (!agAddState) return;
+      const slot = slotFromEvent(e);
+      if (slot !== agAddState.startSlot) agAddState.moved = true;
+      agAddState.currentSlot = slot;
+      const preview = $("agTlAddPreview");
+      if (preview) {
+        const lo = Math.min(agAddState.startSlot, slot), hi = Math.max(agAddState.startSlot, slot);
+        preview.style.top = `${lo * AG_TL_ROW_PX}px`;
+        preview.style.height = `${(hi - lo + 1) * AG_TL_ROW_PX}px`;
+      }
+    };
+    const finish = () => {
+      if (!agAddState) return;
+      const { startSlot, currentSlot, moved } = agAddState;
+      const lo = Math.min(startSlot, currentSlot), hi = Math.max(startSlot, currentSlot);
+      const startMinute = minM + lo * AG_TL_SLOT_MIN;
+      const durationMinutes = moved ? (hi - lo + 1) * AG_TL_SLOT_MIN : 30;
+      $("agTlAddPreview")?.remove();
+      agAddState = null;
+      showAgendaTimelineInlineAdd(content, lo, hi, startMinute, durationMinutes);
+    };
+    content.onpointerup = finish;
+    content.onpointercancel = () => { $("agTlAddPreview")?.remove(); agAddState = null; };
+  }
+
+  // 팝업 없이 타임라인 그 자리에 바로 입력창을 띄워 할일을 추가함(Enter/바깥 클릭 시 저장, Esc면 취소)
+  function showAgendaTimelineInlineAdd(content, loSlot, hiSlot, startMinute, durationMinutes) {
+    const el = document.createElement("div");
+    el.className = "ag-tl-task tl-inline-add";
+    el.style.top = `${loSlot * AG_TL_ROW_PX}px`;
+    el.style.height = `${(hiSlot - loSlot + 1) * AG_TL_ROW_PX}px`;
+    el.style.left = "0"; el.style.width = "calc(100% - 4px)";
+    el.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
+    content.appendChild(el);
+    const input = el.querySelector("input");
+    input.focus();
+    let done = false;
+    const commit = async () => {
+      if (done) return;
+      const name = input.value.trim();
+      if (!name) { el.remove(); return; }
+      done = true;
+      const { error } = await sb.from("tok_todos").insert({
+        title: name, start_date: homeAgendaDate,
+        todo_time: minutesToHHMM(startMinute) + ":00", duration_minutes: durationMinutes,
+      });
+      if (error) { alert("저장 실패: " + error.message); done = false; return; }
+      await loadAll();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      else if (e.key === "Escape") { done = true; el.remove(); }
+    });
+    input.addEventListener("blur", commit);
   }
 
   function wireAgendaHabitChecks() {
@@ -1956,418 +2077,6 @@
     renderPlanBoard();
     renderSomeday();
   }
-
-  // 시간이 있는 습관 / 없는 습관으로만 나눔 (시간블럭 개념은 더 이상 화면에 표시하지 않음)
-  function splitByTime(active) {
-    const timed = active.filter(t => t.start_minute != null).sort((a, b) => a.start_minute - b.start_minute);
-    const untimed = active.filter(t => t.start_minute == null);
-    return { timed, untimed };
-  }
-
-  function untimedListHtml(untimed, label) {
-    if (!untimed.length) return "";
-    return `
-      <div class="tl-unassigned">
-        <div class="section-label">${escapeHtml(label)}</div>
-        <div class="card">
-          ${untimed.map(t => {
-            const done = logsToday.has(t.id);
-            return `<div class="task-row ${done?'done':''}">
-              <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
-              <span>${escapeHtml(t.name)}</span>
-            </div>`;
-          }).join("")}
-        </div>
-      </div>`;
-  }
-
-  function timedRowHtml(t) {
-    const done = logsToday.has(t.id);
-    return `<div class="task-row ${done?'done':''}" data-id="${t.id}">
-      <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
-      <span style="color:var(--sub);font-size:12px;margin-right:6px;">${minutesToHHMM(t.start_minute)}</span>
-      <span>${escapeHtml(t.name)}</span>
-    </div>`;
-  }
-
-  // 타임블럭 보기: tok_time_blocks의 이름표(아침/오전/오후/저녁/밤 등) 구간에 맞춰
-  // 시간이 있는 습관을 그룹핑해서 보여줌. block_id 컬럼은 더이상 쓰지 않고,
-  // start_minute이 어느 블럭 구간에 들어가는지로 매번 다시 계산함.
-  function renderHomeBlocks(active) {
-    const { timed, untimed } = splitByTime(active);
-    let html = "";
-
-    if (timeBlocks.length) {
-      const covered = new Set();
-      timeBlocks.forEach(block => {
-        const inBlock = timed.filter(t => t.start_minute >= block.start_minute && t.start_minute < block.end_minute);
-        inBlock.forEach(t => covered.add(t.id));
-        html += `<div class="section-label" style="margin:14px 2px 8px;">${escapeHtml(block.title)}</div>`;
-        html += `<div class="card" data-block-start="${block.start_minute}">${inBlock.map(timedRowHtml).join("")}<div class="block-add-row" data-block-start="${block.start_minute}">+ 추가</div></div>`;
-      });
-      const uncovered = timed.filter(t => !covered.has(t.id));
-      if (uncovered.length) {
-        html += `<div class="card">${uncovered.map(timedRowHtml).join("")}</div>`;
-      }
-    } else if (timed.length) {
-      // 타임블럭이 하나도 설정 안 돼있으면 그냥 시간순으로만 보여줌
-      html += `<div class="card">${timed.map(timedRowHtml).join("")}</div>`;
-    }
-
-    $("timelineWrap").innerHTML = html + untimedListHtml(untimed, "시간 없음");
-
-    // 블럭 안 "+ 추가"를 누르면 팝업 없이 바로 그 자리에서 입력할 수 있게 인라인 입력창으로 바뀜.
-    // 시작 시각은 블럭 시작시각, 소요시간은 기본 30분(습관 관리 화면에서 나중에 15분 단위로 조절 가능)
-    document.querySelectorAll(".block-add-row").forEach(row => {
-      row.onclick = () => {
-        const startMinute = parseInt(row.dataset.blockStart, 10);
-        const wrap = document.createElement("div");
-        wrap.className = "block-add-row";
-        wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="습관 이름" />`;
-        row.replaceWith(wrap);
-        const input = wrap.querySelector("input");
-        input.focus();
-        let done = false;
-        const commit = async () => {
-          if (done) return;
-          const name = input.value.trim();
-          if (!name) { renderHome(); return; }
-          done = true;
-          const { error } = await sb.from("tok_habits").insert({ name, sort_order: tasks.length, start_minute: startMinute, duration_minutes: 30, repeat_unit: "day", repeat_interval: 1 });
-          if (error) { alert("저장 실패: " + error.message); done = false; return; }
-          await loadAll();
-        };
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { done = true; renderHome(); }
-        });
-        input.addEventListener("blur", commit);
-      };
-    });
-
-    attachBlockDrag();
-  }
-
-  // 타임블럭(목록) 보기: 습관 행을 다른 블럭 카드 위로 드래그해서 옮기면
-  // 그 블럭의 시작시각으로 재배정됨(소요시간은 그대로 유지). 짧게 누르기만 하면 아무 것도 안 함
-  // (체크박스는 기존과 동일하게 그대로 동작).
-  function attachBlockDrag() {
-    let dragEl = null, dragId = null, moved = false, startX = 0, startY = 0, curTarget = null;
-
-    document.querySelectorAll(".task-row[data-id]").forEach(row => {
-      row.addEventListener("pointerdown", (e) => {
-        if (e.target.closest("input")) return;
-        dragEl = row; dragId = row.dataset.id; moved = false; curTarget = null;
-        startX = e.clientX; startY = e.clientY;
-        row.setPointerCapture?.(e.pointerId);
-      });
-      row.addEventListener("pointermove", (e) => {
-        if (!dragEl) return;
-        if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
-          moved = true;
-          dragEl.classList.add("dragging");
-        }
-        if (!moved) return;
-        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".card[data-block-start]");
-        if (under !== curTarget) {
-          curTarget?.classList.remove("drop-target");
-          curTarget = under || null;
-          curTarget?.classList.add("drop-target");
-        }
-      });
-      const finish = async () => {
-        if (!dragEl) return;
-        const el = dragEl, id = dragId, wasMoved = moved, target = curTarget;
-        dragEl = null; dragId = null; moved = false; curTarget = null;
-        el.classList.remove("dragging");
-        target?.classList.remove("drop-target");
-        if (!wasMoved || !target) return; // 다른 블럭 위에서 놓지 않았으면 그대로 둠
-        const startMinute = parseInt(target.dataset.blockStart, 10);
-        const { error } = await sb.from("tok_habits").update({ start_minute: startMinute }).eq("id", id);
-        if (error) { alert("이동 실패: " + error.message); return; }
-        await loadAll();
-      };
-      row.addEventListener("pointerup", finish);
-      row.addEventListener("pointercancel", () => {
-        dragEl?.classList.remove("dragging");
-        curTarget?.classList.remove("drop-target");
-        dragEl = null; dragId = null; moved = false; curTarget = null;
-      });
-    });
-  }
-
-  // 타임라인 보기: 15분 단위 그리드 위에 습관을 시작 시각·소요시간에 맞춰 배치.
-  // 시간블럭 배경 띠는 더 이상 표시하지 않음 — 빈칸을 클릭/드래그하면 그 시각에 바로 습관을 추가할 수 있음.
-  const TL_SLOT_MIN = 15;
-  const TL_ROW_PX = 13;
-  let tlAddState = null;
-
-  function renderHomeTimeline(active) {
-    const { timed, untimed } = splitByTime(active);
-
-    let minM = 360, maxM = 1440; // 기본 06:00~24:00
-    timed.forEach(t => {
-      minM = Math.min(minM, t.start_minute);
-      maxM = Math.max(maxM, t.start_minute + (t.duration_minutes || 30));
-    });
-
-    const slotCount = Math.max(1, Math.ceil((maxM - minM) / TL_SLOT_MIN));
-    const rowOf = (m) => Math.floor((m - minM) / TL_SLOT_MIN) + 1;
-
-    let rowsHtml = "";
-    for (let i = 0; i < slotCount; i++) {
-      const m = minM + i * TL_SLOT_MIN;
-      if (m % 30 === 0) {
-        rowsHtml += `<div class="tl-row-line" style="grid-row:${i+1}"></div>`;
-        // 30분 눈금선은 다 그리되, 숫자 표시는 정시(매 60분)에만 — 30분 지점은 눈금만 봐도 알 수 있음
-        if (m % 60 === 0) {
-          rowsHtml += `<div class="tl-row-label" style="grid-row:${i+1}">${minutesToHHMM(m)}</div>`;
-        }
-      }
-    }
-
-    let tasksHtml = "";
-    timed.forEach(t => {
-      const duration = t.duration_minutes || 30;
-      const tStartRow = rowOf(t.start_minute);
-      const tEndRow = Math.max(tStartRow + 1, rowOf(t.start_minute + duration));
-      const done = logsToday.has(t.id);
-      tasksHtml += `<div class="tl-task ${done?'done':''}" data-id="${t.id}" data-start="${t.start_minute}" data-duration="${duration}" style="grid-row:${tStartRow} / ${tEndRow}">
-        <input type="checkbox" ${done?"checked":""} data-id="${t.id}" class="home-check" />
-        <span class="tl-title">${escapeHtml(t.name)}</span>
-      </div>`;
-    });
-
-    $("timelineWrap").innerHTML = `<div class="tl-grid" id="tlGrid" style="grid-template-rows:repeat(${slotCount},${TL_ROW_PX}px)">${rowsHtml}${tasksHtml}</div>${untimedListHtml(untimed, "시간 없음")}`;
-    attachTimelineAddDrag(minM, slotCount);
-    attachTimelineItemDrag(minM);
-  }
-
-  // 기존 습관 항목 인터랙션(2026-09-05 재설계):
-  // - 몸통 전체(위/아래 끝 8px 포함) 짧게 클릭 → 이름 인라인 수정
-  // - 몸통 아무 곳이나 0.3초 이상 누르고 있다가 움직이면 → 이동(시작시각 변경)
-  // - 단, 위/아래 끝 8px 구역에서는 누르자마자(0.3초 기다리지 않고) 바로 드래그하면 → 시간 조절(resize).
-  //   같은 구역이라도 눌러서 0.3초 넘게 가만히 있으면 그 뒤엔 이동으로 취급.
-  // - 그 외 몸통에서 0.3초 되기 전에 움직이면(스크롤 등으로 보고) 취소, 아무 것도 안 함.
-  const TL_LONG_PRESS_MS = 300;
-  const TL_EDGE_ZONE_PX = 8;
-
-  function attachTimelineItemDrag(minM) {
-    const rowOf = (m) => Math.floor((m - minM) / TL_SLOT_MIN) + 1;
-
-    document.querySelectorAll(".tl-task").forEach(task => {
-      const id = task.dataset.id;
-      if (!id) return; // 인라인 추가 중인 임시 요소는 건너뜀
-      const origStart = parseInt(task.dataset.start, 10);
-      const origDuration = parseInt(task.dataset.duration, 10);
-
-      let dragKind = null; // null(대기중) | "move" | "resize-top" | "resize-bottom"
-      let startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null;
-      let longPressTimer = null;
-      let pendingStart = origStart, pendingDuration = origDuration;
-
-      const zoneAt = (clientY) => {
-        const rect = task.getBoundingClientRect();
-        const offsetY = clientY - rect.top;
-        if (offsetY <= TL_EDGE_ZONE_PX) return "top";
-        if (offsetY >= rect.height - TL_EDGE_ZONE_PX) return "bottom";
-        return null;
-      };
-
-      const applyPreview = () => {
-        const sRow = rowOf(pendingStart), eRow = Math.max(sRow + 1, rowOf(pendingStart + pendingDuration));
-        task.style.gridRow = `${sRow} / ${eRow}`;
-      };
-      const clearTimer = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
-      const clearHoverHint = () => { task.classList.remove("edge-hover-top", "edge-hover-bottom"); task.style.cursor = ""; };
-
-      const startEditTitle = () => {
-        const titleEl = task.querySelector(".tl-title");
-        if (!titleEl) return;
-        const current = titleEl.textContent;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "inline-add-input";
-        input.value = current;
-        titleEl.replaceWith(input);
-        input.focus(); input.select();
-        let done = false;
-        const commit = async () => {
-          if (done) return;
-          const name = input.value.trim();
-          if (!name || name === current) { renderHome(); return; }
-          done = true;
-          const { error } = await sb.from("tok_habits").update({ name }).eq("id", id);
-          if (error) { alert("수정 실패: " + error.message); done = false; return; }
-          await loadAll();
-        };
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { done = true; renderHome(); }
-        });
-        input.addEventListener("blur", commit);
-      };
-
-      task.addEventListener("pointerdown", (e) => {
-        if (e.target.closest("input")) return;
-        pressed = true;
-        moved = false; cancelled = false;
-        pendingStart = origStart; pendingDuration = origDuration;
-        startY = e.clientY;
-        edgeAtStart = zoneAt(e.clientY);
-        dragKind = null;
-        task.setPointerCapture?.(e.pointerId);
-
-        // 몸통 어디든(끝 8px 포함) 일단 0.3초 대기 → 그동안 안 움직이면 이동으로 전환
-        longPressTimer = setTimeout(() => {
-          longPressTimer = null;
-          if (cancelled) return;
-          dragKind = "move";
-          task.classList.add("dragging");
-          clearHoverHint();
-        }, TL_LONG_PRESS_MS);
-      });
-      task.addEventListener("pointermove", (e) => {
-        if (!pressed) {
-          // 누르지 않은 상태(호버)에서는 끝 8px 구역이면 조절 커서/표시만 보여줌
-          const zone = zoneAt(e.clientY);
-          task.classList.toggle("edge-hover-top", zone === "top");
-          task.classList.toggle("edge-hover-bottom", zone === "bottom");
-          task.style.cursor = zone ? "ns-resize" : "";
-          return;
-        }
-        const dy = e.clientY - startY;
-        if (dragKind === null) {
-          if (cancelled) return;
-          if (Math.abs(dy) > 6) {
-            clearTimer();
-            if (edgeAtStart) {
-              // 끝 구역에서 0.3초 기다리지 않고 바로 드래그 → 시간 조절
-              dragKind = edgeAtStart === "top" ? "resize-top" : "resize-bottom";
-            } else {
-              // 몸통 가운데에서 기다리지 않고 바로 움직이면 스크롤 등으로 보고 취소
-              cancelled = true;
-              return;
-            }
-          } else {
-            return;
-          }
-        }
-        if (Math.abs(dy) > 6) moved = true;
-        if (!moved) return;
-        const deltaMin = Math.round(dy / TL_ROW_PX) * TL_SLOT_MIN;
-        if (dragKind === "move") {
-          let ns = origStart + deltaMin;
-          ns = Math.max(0, Math.min(1440 - origDuration, ns));
-          pendingStart = ns; pendingDuration = origDuration;
-        } else if (dragKind === "resize-top") {
-          let ns = Math.max(0, Math.min(origStart + origDuration - TL_SLOT_MIN, origStart + deltaMin));
-          pendingStart = ns; pendingDuration = (origStart + origDuration) - ns;
-        } else {
-          let nd = Math.max(TL_SLOT_MIN, Math.min(1440 - origStart, origDuration + deltaMin));
-          pendingStart = origStart; pendingDuration = nd;
-        }
-        applyPreview();
-      });
-      const finish = async () => {
-        clearTimer();
-        pressed = false;
-        const kind = dragKind;
-        dragKind = null;
-        task.classList.remove("dragging");
-        clearHoverHint();
-
-        if (kind === null) {
-          if (!cancelled) startEditTitle(); // 0.3초 되기 전에 짧게 뗐으면 → 이름 수정
-          return;
-        }
-        if (!moved) return; // 누르기만 하고 움직이지 않았으면 아무 것도 안 함
-        const { error } = await sb.from("tok_habits").update({
-          start_minute: pendingStart, duration_minutes: pendingDuration,
-        }).eq("id", id);
-        if (error) { alert((kind === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
-        await loadAll();
-      };
-      task.addEventListener("pointerup", finish);
-      task.addEventListener("pointercancel", () => { clearTimer(); pressed = false; dragKind = null; task.classList.remove("dragging"); clearHoverHint(); });
-      task.addEventListener("pointerleave", () => { if (!pressed) clearHoverHint(); });
-    });
-  }
-
-  // 타임라인 빈 곳을 클릭하거나 드래그하면 그 시각(또는 드래그한 범위)에 바로 습관 추가 시트가 열림
-  function attachTimelineAddDrag(minM, slotCount) {
-    const grid = $("tlGrid");
-    if (!grid) return;
-
-    const slotFromEvent = (e) => {
-      const rect = grid.getBoundingClientRect();
-      const y = (e.clientY ?? (e.touches && e.touches[0]?.clientY)) - rect.top;
-      const slot = Math.floor(y / TL_ROW_PX);
-      return Math.max(0, Math.min(slotCount - 1, slot));
-    };
-
-    grid.onpointerdown = (e) => {
-      if (e.target.closest(".tl-task")) return; // 기존 항목 위 클릭은 무시(체크박스 등 정상 동작)
-      const startSlot = slotFromEvent(e);
-      tlAddState = { startSlot, currentSlot: startSlot, minM, moved: false };
-      const preview = document.createElement("div");
-      preview.className = "tl-add-preview";
-      preview.id = "tlAddPreview";
-      preview.style.gridRow = `${startSlot+1} / ${startSlot+2}`;
-      grid.appendChild(preview);
-      grid.setPointerCapture?.(e.pointerId);
-    };
-    grid.onpointermove = (e) => {
-      if (!tlAddState) return;
-      const slot = slotFromEvent(e);
-      if (slot !== tlAddState.startSlot) tlAddState.moved = true;
-      tlAddState.currentSlot = slot;
-      const preview = $("tlAddPreview");
-      if (preview) {
-        const lo = Math.min(tlAddState.startSlot, slot), hi = Math.max(tlAddState.startSlot, slot);
-        preview.style.gridRow = `${lo+1} / ${hi+2}`;
-      }
-    };
-    const finish = () => {
-      if (!tlAddState) return;
-      const { startSlot, currentSlot, moved } = tlAddState;
-      const lo = Math.min(startSlot, currentSlot), hi = Math.max(startSlot, currentSlot);
-      const startMinute = minM + lo * TL_SLOT_MIN;
-      const durationMinutes = moved ? (hi - lo + 1) * TL_SLOT_MIN : 30;
-      $("tlAddPreview")?.remove();
-      tlAddState = null;
-      showTimelineInlineAdd(grid, lo + 1, hi + 2, startMinute, durationMinutes);
-    };
-    grid.onpointerup = finish;
-    grid.onpointercancel = () => { $("tlAddPreview")?.remove(); tlAddState = null; };
-  }
-
-  // 팝업 없이 타임라인 그 자리에 바로 입력창을 띄움 (Enter/바깥 클릭 시 저장, Esc면 취소)
-  function showTimelineInlineAdd(grid, startRow, endRow, startMinute, durationMinutes) {
-    const el = document.createElement("div");
-    el.className = "tl-task tl-inline-add";
-    el.style.gridRow = `${startRow} / ${endRow}`;
-    el.innerHTML = `<input type="text" class="inline-add-input" placeholder="습관 이름" />`;
-    grid.appendChild(el);
-    const input = el.querySelector("input");
-    input.focus();
-    let done = false;
-    const commit = async () => {
-      if (done) return;
-      const name = input.value.trim();
-      if (!name) { el.remove(); return; }
-      done = true;
-      const { error } = await sb.from("tok_habits").insert({ name, sort_order: tasks.length, start_minute: startMinute, duration_minutes: durationMinutes, repeat_unit: "day", repeat_interval: 1 });
-      if (error) { alert("저장 실패: " + error.message); done = false; return; }
-      await loadAll();
-    };
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); commit(); }
-      else if (e.key === "Escape") { done = true; el.remove(); }
-    });
-    input.addEventListener("blur", commit);
-  }
-
   // ── 할일 탭 : 다가오는 계획 (7일 보드) ──
   // tok_todos(날짜 있는 1회성 할일)만 보여줌 — 습관 실행은 '습관' 탭으로 이동함.
   // 빈 날짜를 클릭하면 그 날짜로, 여러 날짜에 걸쳐 세로로 드래그하면 시작~종료 기간으로 할일 추가 시트가 열림.
@@ -2656,20 +2365,6 @@
     await loadAll();
   };
 
-  $("viewListBtn").onclick = () => {
-    homeView = "list";
-    $("viewListBtn").classList.add("active");
-    $("viewTimelineBtn").classList.remove("active");
-    renderTodo();
-  };
-  $("viewTimelineBtn").onclick = () => {
-    homeView = "timeline";
-    $("viewTimelineBtn").classList.add("active");
-    $("viewListBtn").classList.remove("active");
-    renderTodo();
-  };
-
-
   // ── 집 : 언젠가 할일 ──
   function renderSomeday() {
     const sorted = [...somedayItems].sort((a, b) => (a.is_done === b.is_done) ? 0 : (a.is_done ? 1 : -1));
@@ -2842,20 +2537,8 @@
     return `${dt.getMonth()+1}/${dt.getDate()}(${days[dt.getDay()]})`;
   }
 
-  // ── 습관 탭: 실행뷰(타임블럭/타임라인) + 습관 관리 목록 ──
+  // ── 습관 탭: 습관 관리 목록 (오늘 일정 확인·조절은 집 화면에서) ──
   function renderTodo() {
-    const allActive = tasks.filter(t => t.is_active);
-    const active = allActive.filter(t => isHabitDueOnDate(t, todayStr(), logsToday.has(t.id)));
-    $("homeEmpty").style.display = active.length ? "none" : "block";
-    $("homeEmpty").innerHTML = allActive.length
-      ? "오늘은 차례인 습관이 없어요.<br/>반복주기상 아직 안 밀린 습관들은 여기 안 보여요."
-      : "아직 등록한 습관이 없어요.<br/>아래에서 먼저 추가해보세요.";
-    if (homeView === "timeline") renderHomeTimeline(active);
-    else renderHomeBlocks(active);
-    document.querySelectorAll(".home-check").forEach(cb => {
-      cb.onchange = () => toggleToday(cb.dataset.id, cb.checked);
-    });
-
     $("todoEmpty").style.display = tasks.length ? "none" : "block";
     $("todoList").innerHTML = tasks.map(t => {
       const cat = habitCategories.find(c => c.id === t.category_id);
