@@ -14,20 +14,20 @@
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;}
 
   /* ── 로그인 ── */
-  #authBox{max-width:360px;margin:80px auto;padding:24px;background:var(--card);border:1px solid var(--line);border-radius:16px;}
+  #authBox{max-width:360px;margin:80px auto;padding:24px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 6px 20px rgba(150,130,200,.08);}
   #authBox h1{font-size:18px;margin:0 0 16px;}
-  #authBox input{width:100%;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);border-radius:10px;font-size:14px;}
-  #authBox button{width:100%;padding:10px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;cursor:pointer;margin-top:4px;}
+  #authBox input{width:100%;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);border-radius:12px;font-size:14px;}
+  #authBox button{width:100%;padding:10px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:14px;cursor:pointer;margin-top:4px;}
   #authBox .alt{background:none;color:var(--accent);font-size:12px;padding:6px;}
   #authMsg{font-size:12px;color:var(--danger);min-height:16px;margin-top:4px;}
 
   /* ── 레이아웃 ── */
   #app{display:none;min-height:100vh;}
   .layout{display:flex;min-height:100vh;}
-  .sidebar{width:180px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);padding:20px 12px;position:sticky;top:0;height:100vh;}
+  .sidebar{width:180px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);padding:20px 12px;position:sticky;top:0;height:100vh;box-shadow:2px 0 16px rgba(150,130,200,.06);}
   .sidebar h1{font-size:15px;margin:0 0 20px;padding-left:8px;}
-  .navitem{display:flex;align-items:center;gap:8px;padding:10px 8px;border-radius:10px;color:var(--sub);font-size:14px;cursor:pointer;margin-bottom:4px;}
-  .navitem.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
+  .navitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;color:var(--sub);font-size:14px;cursor:pointer;margin-bottom:4px;transition:background .15s,color .15s;}
+  .navitem.active{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 15%,transparent);}
   .content{flex:1;min-width:0;padding:20px 24px 100px;max-width:1100px;}
   .pagehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .pagehead h2{font-size:18px;margin:0;}
@@ -53,13 +53,13 @@
     .content{padding:16px 16px 90px;max-width:100%;}
   }
 
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:10px;box-shadow:0 6px 20px rgba(150,130,200,.08);}
   .empty{text-align:center;color:var(--sub);font-size:13px;padding:50px 0;}
   .section-label{font-size:12px;color:var(--sub);font-weight:700;margin:18px 2px 8px;}
   .section-label:first-child{margin-top:0;}
 
   /* ── 집 : 진행률 ── */
-  .progress-wrap{background:linear-gradient(135deg,#ffe3ee,#e6f3ff 55%,#e3f9ee);border:1px solid var(--line);border-radius:16px;padding:18px 16px;margin-bottom:6px;}
+  .progress-wrap{background:linear-gradient(135deg,#ffe3ee,#e6f3ff 55%,#e3f9ee);border:1px solid var(--line);border-radius:20px;padding:18px 16px;margin-bottom:6px;}
   .progress-text{font-size:14px;color:var(--text);font-weight:600;margin-bottom:8px;}
   .progress-bar{height:8px;background:rgba(255,255,255,.6);border-radius:999px;overflow:hidden;}
   .progress-fill{height:100%;background:linear-gradient(90deg,#f6a8c7,#9a8cf0);border-radius:999px;transition:width .25s;}
@@ -85,9 +85,9 @@
   /* ── 집 : 목록/타임라인 보기 전환 ── */
   .view-toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
   .view-toggle{display:flex;gap:6px;flex:1;}
-  .view-toggle button{flex:1;padding:8px 0;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:13px;color:var(--sub);cursor:pointer;}
+  .view-toggle button{flex:1;padding:8px 0;border:1px solid var(--line);background:#fff;border-radius:12px;font-size:13px;color:var(--sub);cursor:pointer;}
   .view-toggle button.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);font-weight:600;}
-  .today-btn{flex:none;padding:8px 14px;border:1px solid var(--line);background:#fff;border-radius:10px;font-size:13px;color:var(--sub);cursor:pointer;}
+  .today-btn{flex:none;padding:8px 14px;border:1px solid var(--line);background:#fff;border-radius:12px;font-size:13px;color:var(--sub);cursor:pointer;}
   .today-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-soft);}
   /* ── 오늘 열 : 하루종일 + 타임블럭을 박스카드 대신 밑줄 리스트로(사용자 일러스트 시안 참고) ── */
   .agenda-flat{display:flex;flex-direction:column;}
@@ -115,8 +115,8 @@
 
   /* ── 집 : 언젠가 할일 ── */
   .someday-add-row{display:flex;gap:6px;margin-bottom:8px;}
-  .someday-add-row input{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;}
-  .someday-add-row button{padding:0 14px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;}
+  .someday-add-row input{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:12px;font-size:13px;}
+  .someday-add-row button{padding:0 14px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;}
   .someday-row{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;}
   .someday-row:last-child{border-bottom:none;}
   .someday-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
@@ -125,11 +125,11 @@
 
   /* ── 팝업 없이 바로 입력하는 공통 인라인 추가 스타일 ── */
   .inline-add-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
-  .inline-add-row input{padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;font-family:inherit;}
+  .inline-add-row input{padding:9px 10px;border:1px solid var(--line);border-radius:12px;font-size:13px;font-family:inherit;}
   .inline-add-row input[type=text]{flex:1;min-width:120px;}
   .inline-add-row input[type=date],.inline-add-row input[type=time]{flex:0 0 auto;}
   .inline-add-row input[type=number]{width:64px;flex:0 0 auto;}
-  .inline-add-row button{padding:0 14px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;flex-shrink:0;}
+  .inline-add-row button{padding:0 14px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;flex-shrink:0;}
   .inline-add-input{width:100%;padding:5px 7px;border:1px solid var(--accent);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;}
   .tl-inline-add{padding:0 4px;}
   .tl-inline-add .inline-add-input{padding:2px 6px;font-size:12px;}
@@ -137,7 +137,7 @@
   /* ── 클릭=수정, 오른쪽클릭=삭제 메뉴 ── */
   .todo-row .name, .event-row .title, .someday-title, .plan-row.todo .plan-todo-title{cursor:pointer;}
   .todo-row .name:hover, .event-row .title:hover, .someday-title:hover, .plan-row.todo .plan-todo-title:hover{color:var(--accent);}
-  .ctx-menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:4px;z-index:30;}
+  .ctx-menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:4px;z-index:30;}
   .ctx-menu button{display:block;width:100%;padding:8px 16px;border:none;background:none;color:var(--danger);font-size:13px;text-align:left;cursor:pointer;border-radius:6px;white-space:nowrap;}
   .ctx-menu button:hover{background:var(--bg);}
 
@@ -267,7 +267,7 @@
   .focus-pick-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 0 6px;color:var(--sub);font-size:12px;}
   .focus-pick-head button{border:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:4px 8px;font-size:11px;cursor:pointer;}
   .focus-pick-list{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;margin-bottom:8px;}
-  .focus-pick-row{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:13px;text-align:left;cursor:pointer;}
+  .focus-pick-row{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;font-size:13px;text-align:left;cursor:pointer;}
   .focus-pick-row:hover{background:var(--bg);}
   .focus-pick-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;}
   .focus-pick-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -282,7 +282,7 @@
   .focus-change-btn{flex:none;border:none;background:none;color:var(--sub);font-size:11px;padding:4px 6px;cursor:pointer;white-space:nowrap;}
   .focus-change-btn:hover{color:var(--text);}
   .focus-sub-label{font-size:11px;font-weight:700;color:var(--sub);margin-bottom:4px;}
-  .focus-sub-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px;}
+  .focus-sub-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:8px;}
   .focus-sub-row{display:flex;align-items:center;gap:8px;padding:8px 9px;background:#fff;}
   .focus-sub-row+.focus-sub-row{border-top:1px solid var(--line);}
   .focus-sub-check{width:20px;height:20px;flex-shrink:0;border:1.5px solid var(--line);border-radius:6px;background:#fff;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
@@ -293,20 +293,20 @@
   .focus-sub-del:hover{color:var(--danger);}
   .focus-progress{color:var(--sub);font-size:11px;}
 
-  .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px rgba(154,140,240,.4);cursor:pointer;z-index:8;}
+  .fab{position:fixed;right:20px;bottom:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:26px;box-shadow:0 6px 16px color-mix(in srgb,var(--accent) 45%,transparent);cursor:pointer;z-index:8;}
   @media (max-width:760px){ .fab{bottom:78px;} }
 
   .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-end;justify-content:center;z-index:20;}
   .sheet-bg.open{display:flex;}
-  .sheet{background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:18px 16px 24px;max-height:88vh;overflow-y:auto;}
+  .sheet{background:#fff;width:100%;max-width:480px;border-radius:24px 24px 0 0;padding:18px 16px 24px;max-height:88vh;overflow-y:auto;}
   .sheet h2{font-size:15px;margin:0 0 12px;}
   .field{margin-bottom:10px;}
   .field label{font-size:12px;color:var(--sub);display:block;margin-bottom:4px;}
-  .field input, .field textarea, .field select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;}
+  .field input, .field textarea, .field select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:12px;font-size:14px;font-family:inherit;}
   .field.split{display:flex;gap:8px;}
   .field.split > div{flex:1;}
   .sheet-actions{display:flex;gap:8px;margin-top:14px;}
-  .sheet-actions button{flex:1;padding:11px;border-radius:10px;border:none;font-size:14px;cursor:pointer;}
+  .sheet-actions button{flex:1;padding:11px;border-radius:12px;border:none;font-size:14px;cursor:pointer;}
   .btn-primary{background:var(--accent);color:#fff;}
   .btn-ghost{background:var(--bg);color:var(--sub);}
 </style>
