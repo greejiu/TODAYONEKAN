@@ -415,7 +415,6 @@
               </div>
               <div id="somedayZone">
                 <div id="somedaySummaryList"></div>
-                <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
               </div>
             </div>
           </div>
@@ -1552,7 +1551,7 @@
       const name = input.value.trim();
       if (!name || name === current) { onDone(); return; }
       done = true;
-      const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
+      const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : kind === "someday" ? "tok_someday" : "tok_events";
       const field = kind === "habit" ? "name" : "title";
       const { error } = await sb.from(table).update({ [field]: name }).eq("id", id);
       if (error) { alert("수정 실패: " + error.message); done = false; return; }
@@ -2217,17 +2216,19 @@
     board.onpointercancel = () => { clearHighlight(); planUpcomingAddState = null; };
   }
 
-  // "언젠가" 열: 요약만(최대 8개). 추가·삭제·이름수정은 '할일' 탭에서. 행 자체는 다른 날짜/오늘로 드래그 가능.
+  // "언젠가" 열: 요약만(최대 8개). 다른 열과 동일하게 빈칸 클릭=추가, 짧은 클릭=이름 인라인수정, 드래그=다른 날짜/오늘로 이동.
   // ⚠️ data-id 대신 data-someday-id를 씀: 습관 탭의 attachBlockDrag가 전역으로 ".task-row[data-id]"를
   //   찾기 때문에, 여기서 data-id를 그대로 쓰면 이 행에도 그 핸들러가 잘못 붙어버림(이름공간 충돌 방지).
   function renderSomedaySummary() {
     const items = somedayItems.filter(s => !s.is_done).slice(0, 8);
-    $("somedaySummaryList").innerHTML = items.map(item => `
+    const rowsHtml = items.map(item => `
       <div class="task-row ag-someday-row" data-someday-id="${item.id}">
         <input type="checkbox" data-id="${item.id}" class="somedaysum-check" />
-        <span>${escapeHtml(item.title)}</span>
+        <span class="agenda-title">${escapeHtml(item.title)}</span>
       </div>`).join("");
-    $("somedaySummaryEmpty").style.display = items.length ? "none" : "block";
+    $("somedaySummaryList").innerHTML = items.length
+      ? rowsHtml + `<div class="block-add-row" data-somedayadd="1">+ 추가</div>`
+      : `<div class="agenda-empty-block block-add-row" data-somedayadd="1">등록된 항목이 없어요. 눌러서 추가</div>`;
     document.querySelectorAll(".somedaysum-check").forEach(cb => {
       cb.onchange = async () => {
         const { error } = await sb.from("tok_someday").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
@@ -2236,6 +2237,36 @@
       };
     });
     attachSomedayDrag();
+    attachSomedayAddClick();
+  }
+
+  // "언젠가" 빈칸/+ 추가 클릭 → 인라인 입력으로 tok_someday에 바로 생성.
+  function attachSomedayAddClick() {
+    const row = document.querySelector('#somedaySummaryList .block-add-row[data-somedayadd]');
+    if (!row) return;
+    row.onclick = () => {
+      const wrap = document.createElement("div");
+      wrap.className = "block-add-row";
+      wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="언젠가 할 일" />`;
+      row.replaceWith(wrap);
+      const input = wrap.querySelector("input");
+      input.focus();
+      let done = false;
+      const commit = async () => {
+        if (done) return;
+        const name = input.value.trim();
+        if (!name) { renderSomedaySummary(); return; }
+        done = true;
+        const { error } = await sb.from("tok_someday").insert({ title: name });
+        if (error) { alert("저장 실패: " + error.message); done = false; return; }
+        await loadAll();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") { done = true; renderSomedaySummary(); }
+      });
+      input.addEventListener("blur", commit);
+    };
   }
 
   // 언젠가 행을 다가오는 계획의 특정 날짜/오늘(타임블럭·타임라인·하루종일)로 드래그하면
@@ -2270,7 +2301,7 @@
         row.classList.remove("dragging");
         curTarget?.classList.remove("drop-target");
         curTarget = null;
-        if (!wasMoved) return;
+        if (!wasMoved) { startAgendaItemInlineEdit(row, id, "someday", renderSomedaySummary); return; }
         const drop = homeDropZone(e.clientX, e.clientY);
         if (!drop || drop.zone === "someday") return; // 이미 언젠가라 놓아도 변화 없음
         await moveItemToZone("someday", id, drop);
