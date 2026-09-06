@@ -158,16 +158,13 @@
   .ctx-menu button.default{color:var(--text);}
   .ctx-menu button .ctx-tag-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
 
-  /* ── 집 : 2열 레이아웃 (1열 습관 실행, 2열 다가오는 계획+언젠가 할일) ── */
+  /* ── 집 : 2열 레이아웃 (1열 오늘, 2열 다가오는 계획+언젠가를 세로로 쌓음) ── */
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
+  .home-col-stack{display:flex;flex-direction:column;gap:14px;min-width:0;}
   .home-col{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 6px 20px rgba(150,130,200,.08);}
   .home-col-head{margin-bottom:10px;}
   .home-col-head .title{font-size:13px;font-weight:700;color:var(--text);text-align:center;}
-  @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
-
-  /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
-  .home-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start;}
-  @media (max-width:900px){ .home-grid3{grid-template-columns:1fr;} }
+  @media (max-width:900px){ .home-grid{grid-template-columns:1fr;} }
   .agenda-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
   .agenda-date-wrap{display:flex;align-items:center;gap:6px;}
   .agenda-date-emoji{font-size:13px;}
@@ -196,7 +193,9 @@
   .ag-tl-grid{display:grid;grid-template-columns:34px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;}
   /* 같은 시간대에 겹치는 항목을 나란히 배치하려고 grid-row 대신 이 안에서 절대좌표(top/left/width)로 배치함 */
   .ag-tl-content{grid-column:2;grid-row:1 / -1;position:relative;}
-  .ag-tl-task{display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;padding:0 6px;font-size:12px;position:absolute;box-sizing:border-box;overflow:hidden;z-index:1;touch-action:none;cursor:pointer;}
+  .ag-tl-task{display:flex;align-items:flex-start;gap:6px;background:var(--accent-soft);border:1px solid #dfe3fb;border-radius:8px;padding:4px 6px;font-size:12px;position:absolute;box-sizing:border-box;overflow:hidden;z-index:1;touch-action:none;cursor:pointer;}
+  .ag-tl-now-line{position:absolute;left:0;right:0;height:2px;background:var(--danger);z-index:3;pointer-events:none;}
+  .ag-tl-now-line::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--danger);}
   .ag-tl-task.done{opacity:.55;text-decoration:line-through;}
   .ag-tl-task.event{background:#fff;border-style:dashed;}
   .ag-tl-task.dragging{opacity:.85;box-shadow:0 3px 10px rgba(60,50,100,.18);z-index:5;cursor:grabbing;}
@@ -375,7 +374,7 @@
           <div id="focusTaskBody"></div>
         </div>
 
-        <div class="home-grid3">
+        <div class="home-grid">
           <div class="home-col">
             <div class="agenda-head">
               <button id="agendaPrevBtn" class="agenda-nav">‹</button>
@@ -402,20 +401,22 @@
             <div id="agendaTimeWrap" style="margin-top:12px;"></div>
           </div>
 
-          <div class="home-col">
-            <div class="home-col-head">
-              <div class="title">다가오는 계획</div>
+          <div class="home-col-stack">
+            <div class="home-col">
+              <div class="home-col-head">
+                <div class="title">다가오는 계획</div>
+              </div>
+              <div id="planUpcomingBoard"></div>
             </div>
-            <div id="planUpcomingBoard"></div>
-          </div>
 
-          <div class="home-col">
-            <div class="home-col-head">
-              <div class="title">언젠가</div>
-            </div>
-            <div id="somedayZone">
-              <div id="somedaySummaryList"></div>
-              <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
+            <div class="home-col">
+              <div class="home-col-head">
+                <div class="title">언젠가</div>
+              </div>
+              <div id="somedayZone">
+                <div id="somedaySummaryList"></div>
+                <div id="somedaySummaryEmpty" class="empty" style="display:none;">등록된 항목이 없어요.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -629,6 +630,30 @@
   const pad2 = (n) => String(n).padStart(2, "0");
   const minutesToHHMM = (m) => `${pad2(Math.floor(m/60) % 24)}:${pad2(m%60)}`;
 
+  // 할일 체크(완료) 시 "뾰로롱" 효과음 — 파일 없이 Web Audio로 직접 합성(짧은 2음 상승 차임).
+  let _checkAudioCtx = null;
+  function playCheckSound() {
+    try {
+      _checkAudioCtx = _checkAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (_checkAudioCtx.state === "suspended") _checkAudioCtx.resume();
+      const ctx = _checkAudioCtx;
+      const now = ctx.currentTime;
+      [{ freq: 1046.5, start: 0, dur: 0.09 }, { freq: 1568.0, start: 0.07, dur: 0.15 }].forEach(n => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = n.freq;
+        gain.gain.setValueAtTime(0.0001, now + n.start);
+        gain.gain.exponentialRampToValueAtTime(0.16, now + n.start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.start);
+        osc.stop(now + n.start + n.dur + 0.02);
+      });
+    } catch (err) { /* 오디오 재생 실패해도 앱 동작엔 지장 없게 조용히 무시 */ }
+  }
+
   // ── 테마(설정 화면에서 선택) ──
   // 파스텔만 실제 적용 가능, 나머지 2개는 결님이 Stitch에서 마저 만드는 중이라 준비중으로만 표시
   const THEMES = [
@@ -788,6 +813,7 @@
   async function setTodoDone(id, checked) {
     const { error } = await sb.from("tok_todos").update({ is_done: checked }).eq("id", id);
     if (error) { alert("변경 실패: " + error.message); return false; }
+    if (checked) playCheckSound(); // 할일 체크 시 완료 효과음("뾰로롱")
     const t = todos.find(x => x.id === id);
     if (t) t.is_done = checked;
     if (checked && t && t.repeat_unit) {
@@ -986,6 +1012,7 @@
     if (turnedOn && allDone) {
       const { error: doneErr } = await sb.from("tok_todos").update({ is_done: true }).eq("id", step.todo_id);
       if (!doneErr) {
+        playCheckSound();
         const t = todos.find(x => x.id === step.todo_id);
         if (t) t.is_done = true;
         if (manualFocusTodoId === step.todo_id) manualFocusTodoId = null;
@@ -1291,6 +1318,7 @@
     return null;
   }
   let agendaTimelineMinM = 360; // renderAgendaTimeline이 매번 갱신(타임라인 뷰 드롭 위치→시각 계산용)
+  let agendaTimelineMaxM = 1440; // renderAgendaTimeline이 매번 갱신(현재 시간선이 범위 안에 있는지 판단용)
   let homePlanDays = [];        // renderPlanUpcomingBoard가 매번 갱신(다가오는 계획 칸 idx→날짜 계산용)
 
   // kind: "habit" | "event" | "todo" | "someday"(아직 날짜 없는 언젠가 항목) 소스를 zone으로 옮김.
@@ -1594,6 +1622,7 @@
       maxM = Math.max(maxM, it.start_minute + it.duration_minutes);
     });
     agendaTimelineMinM = minM; // 하루종일→타임라인 드래그 드롭시 시각 계산에 씀
+    agendaTimelineMaxM = maxM;
     const slotCount = Math.max(1, Math.ceil((maxM - minM) / AG_TL_SLOT_MIN));
     const rowOf = (m) => Math.floor((m - minM) / AG_TL_SLOT_MIN) + 1;
 
@@ -1629,7 +1658,26 @@
     wireAgendaHabitChecks();
     attachAgendaTimelineItemDrag(minM);
     attachAgendaTimelineAddDrag(minM, slotCount);
+    positionAgendaNowLine();
   }
+
+  // 타임라인 뷰에 "현재 시간" 가로선 표시(오늘 날짜를 보고 있을 때만). 데이터 재조회 없이 위치만 갱신하므로
+  // 1분마다 가볍게 다시 불러도 됨(아래 setInterval).
+  function positionAgendaNowLine() {
+    const grid = document.querySelector("#agendaTimeWrap .ag-tl-content");
+    let line = grid?.querySelector(".ag-tl-now-line");
+    if (!grid || agendaView !== "timeline" || homeAgendaDate !== todayStr()) { line?.remove(); return; }
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    if (nowMin < agendaTimelineMinM || nowMin > agendaTimelineMaxM) { line?.remove(); return; }
+    if (!line) {
+      line = document.createElement("div");
+      line.className = "ag-tl-now-line";
+      grid.appendChild(line);
+    }
+    line.style.top = ((nowMin - agendaTimelineMinM) / AG_TL_SLOT_MIN * AG_TL_ROW_PX) + "px";
+  }
+  setInterval(positionAgendaNowLine, 60000);
 
   // 시간이 겹치는 항목끼리 열(column)을 나눠 배정. 겹치는 구간(cluster) 안에서 동시에 떠있던
   // 최대 개수를 그 구간 전체의 열 개수로 통일해, 나중에 겹침이 풀려도 폭이 들쭉날쭉하지 않게 함.
