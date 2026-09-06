@@ -184,7 +184,6 @@
   .ag-someday-row.dragging{cursor:grabbing;}
   .agenda-time{color:var(--sub);font-size:12px;width:36px;flex-shrink:0;}
   .agenda-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 8px;flex-shrink:0;font-weight:700;}
-  .agenda-tag.kind-event{color:#c9457a;background:#ffe3ee;}
   .agenda-tag.kind-habit{color:#1c8a5a;background:#e3f9ee;}
   .agenda-tag.kind-todo{color:#2f6fed;background:#e6f3ff;}
   .agenda-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1199,6 +1198,7 @@
       const { error } = await sb.from("tok_habit_logs").insert({ habit_id: taskId, done_date: dateStr, ...snap });
       if (error) { alert("체크 실패: " + error.message); return; }
       habitLogs.push({ habit_id: taskId, done_date: dateStr, ...snap });
+      playCompleteSound(); // 습관도 할일(상위)과 동일하게 완료 효과음 — 습관은 하위 개념 없이 그 자체로 하나의 완료라 긴 쪽으로 통일
     } else {
       const { error } = await sb.from("tok_habit_logs").delete().eq("habit_id", taskId).eq("done_date", dateStr);
       if (error) { alert("체크 해제 실패: " + error.message); return; }
@@ -1228,6 +1228,10 @@
     const cat = itemTagPool(kind).find(c => c.id === catId);
     return cat ? (cat.color || null) : null;
   }
+  // 일정 항목 옆에 붙이는 범주색 동그라미("일정"이라는 글자 배지 대신 — 범주 없으면 일정 태그의 기존 핑크색 그대로)
+  function eventDotHtml(catId) {
+    return `<span class="ag-dot" style="background:${itemTagColor("event", catId) || "#c9457a"};"></span>`;
+  }
   // 태그/범주 색을 카드 배경으로 옅게 깔아줌(원색 그대로면 글자가 안 보여서 흰색과 섞어 파스텔톤으로), 태그 없으면 흰 배경 고정
   function itemTagBgStyle(kind, catId) {
     const color = itemTagColor(kind, catId);
@@ -1251,8 +1255,8 @@
     const rows = [
       ...dayUntimedEvents.map(e => `
         <div class="agenda-item-card ag-allday-row" data-id="${e.id}" data-kind="event">
+          ${eventDotHtml(e.category_id)}
           <span class="agenda-title">${escapeHtml(e.title)}</span>
-          <span class="agenda-tag kind-event">일정</span>
         </div>`),
       ...untimedHabits.map(t => `
         <div class="agenda-item-card ag-allday-row ${doneSet.has(t.id) ? "done" : ""}" data-id="${t.id}" data-kind="habit">
@@ -1496,12 +1500,12 @@
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check agenda-item-check" />`)
       : it.kind === "todo"
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
-      : "";
+      : eventDotHtml(it.cat_id); // 일정은 체크박스 자리에 범주색 동그라미로 대신 표시
     // 타임블럭(카드형) 뷰는 시간대 섹션으로 이미 구분되고 있어 태그색 배경 없이 항상 흰 배경으로 둠(색 구분은 타임라인 뷰에서만).
     return `<div class="agenda-item-card ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${lead}
       <span class="agenda-title">${escapeHtml(it.name)}</span>
-      ${it.kind === "event" ? `<span class="agenda-tag kind-event">일정</span>` : `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>`}
+      ${it.kind !== "event" ? `<span class="agenda-item-time">${minutesToHHMM(it.start_minute)}</span>` : ""}
     </div>`;
   }
 
@@ -1692,7 +1696,7 @@
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
           : it.kind === "todo"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
-          : `<span class="agenda-tag">일정</span>`}
+          : eventDotHtml(it.cat_id)}
         <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
     });
