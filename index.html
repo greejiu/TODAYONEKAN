@@ -2541,7 +2541,7 @@
     if (!board) return;
 
     document.querySelectorAll(".planup-drag-row[data-id]").forEach(row => {
-      let moved = false, startX = 0, startY = 0, curTarget = null;
+      let moved = false, startX = 0, startY = 0, curTarget = null, ghost = null;
       row.addEventListener("pointerdown", (e) => {
         if (e.target.closest("input")) return;
         e.stopPropagation();
@@ -2555,8 +2555,13 @@
         if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
           moved = true;
           row.classList.add("dragging");
+          ghost = document.createElement("div");
+          ghost.className = "ag-drag-ghost";
+          ghost.textContent = row.querySelector(".plan-todo-title")?.textContent || "";
+          document.body.appendChild(ghost);
         }
         if (!moved) return;
+        if (ghost) { ghost.style.left = `${e.clientX + 14}px`; ghost.style.top = `${e.clientY + 10}px`; }
         const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], .ag-tl-grid, #agendaAllDayZone, #somedayZone, .planup-day[data-idx]");
         if (under !== curTarget) {
           curTarget?.classList.remove("drop-target");
@@ -2570,6 +2575,7 @@
         const wasMoved = moved, kind = row.dataset.kind, id = row.dataset.id;
         moved = false;
         row.classList.remove("dragging");
+        ghost?.remove(); ghost = null;
         curTarget?.classList.remove("drop-target");
         curTarget = null;
         if (!wasMoved) {
@@ -2586,6 +2592,7 @@
         e.stopPropagation();
         moved = false;
         row.classList.remove("dragging");
+        ghost?.remove(); ghost = null;
         curTarget?.classList.remove("drop-target");
         curTarget = null;
       });
@@ -2712,7 +2719,7 @@
   // tok_someday에서 지우고 tok_todos에 그 조건으로 새로 만듦(moveItemToZone의 someday 분기).
   function attachSomedayDrag() {
     document.querySelectorAll(".ag-someday-row[data-someday-id]").forEach(row => {
-      let moved = false, startX = 0, startY = 0, curTarget = null;
+      let moved = false, startX = 0, startY = 0, curTarget = null, ghost = null;
       row.addEventListener("pointerdown", (e) => {
         if (e.target.closest("input")) return;
         moved = false; curTarget = null;
@@ -2724,8 +2731,13 @@
         if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
           moved = true;
           row.classList.add("dragging");
+          ghost = document.createElement("div");
+          ghost.className = "ag-drag-ghost";
+          ghost.textContent = row.querySelector(".agenda-title")?.textContent || "";
+          document.body.appendChild(ghost);
         }
         if (!moved) return;
+        if (ghost) { ghost.style.left = `${e.clientX + 14}px`; ghost.style.top = `${e.clientY + 10}px`; }
         const under = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ag-block-card[data-block-start], .ag-tl-grid, #agendaAllDayZone, .planup-day[data-idx]");
         if (under !== curTarget) {
           curTarget?.classList.remove("drop-target");
@@ -2738,6 +2750,7 @@
         const wasMoved = moved, id = row.dataset.somedayId;
         moved = false;
         row.classList.remove("dragging");
+        ghost?.remove(); ghost = null;
         curTarget?.classList.remove("drop-target");
         curTarget = null;
         if (!wasMoved) { startAgendaItemInlineEdit(row, id, "someday", renderSomedaySummary); return; }
@@ -2749,6 +2762,7 @@
       row.addEventListener("pointercancel", () => {
         moved = false;
         row.classList.remove("dragging");
+        ghost?.remove(); ghost = null;
         curTarget?.classList.remove("drop-target");
         curTarget = null;
       });
