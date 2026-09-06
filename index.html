@@ -24,7 +24,7 @@
   /* ── 레이아웃 ── */
   #app{display:none;min-height:100vh;}
   .layout{display:flex;min-height:100vh;}
-  .sidebar{width:180px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);padding:20px 12px;position:sticky;top:0;height:100vh;box-shadow:2px 0 16px rgba(150,130,200,.06);}
+  .sidebar{width:180px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);padding:20px 12px;position:sticky;top:0;height:100vh;box-shadow:2px 0 16px rgba(150,130,200,.06);display:flex;flex-direction:column;}
   .sidebar h1{font-size:15px;margin:0 0 20px;padding-left:8px;}
   .navitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;color:var(--sub);font-size:14px;cursor:pointer;margin-bottom:4px;transition:background .15s,color .15s;}
   .navitem.active{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 15%,transparent);}
@@ -32,7 +32,8 @@
   .pagehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .pagehead h2{font-size:18px;margin:0;}
   #logoutBtn{background:none;border:none;color:var(--sub);font-size:12px;cursor:pointer;}
-  .sidebar-footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--line);}
+  /* 설정/로그인정보/로그아웃을 메뉴 바로 아래가 아니라 사이드바 맨 아래에 붙임(결님 요청) — .sidebar를 세로 flex로 만들고 margin-top:auto로 밀어냄. */
+  .sidebar-footer{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);}
   .sidebar-user{font-size:11px;color:var(--sub);padding:0 8px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* ── 설정 : 테마 선택 ── */
