@@ -105,8 +105,8 @@
   .agenda-item-check:checked ~ .agenda-check-mark{opacity:1;}
   .ag-block-row.done .agenda-title,.ag-allday-row.done .agenda-title{color:var(--sub);text-decoration:line-through;}
   .agenda-empty-block{padding:14px;border-radius:14px;border:1px dashed var(--line);color:var(--sub);font-size:12px;text-align:center;}
-  /* 체크박스(네모)와는 다르게 일정은 늘 색이 차 있는 동그라미로(체크와 크기·위치는 맞추고, 모양으로만 구분). */
-  .agenda-event-dot{border-radius:50%;flex-shrink:0;display:inline-block;vertical-align:middle;}
+  /* 체크박스와 같은 네모 모양·크기·간격으로 통일(할일/습관은 체크박스로 토글, 일정은 늘 범주색으로 차 있는 네모). */
+  .agenda-event-dot{border-radius:6px;flex-shrink:0;display:inline-block;vertical-align:middle;}
 
   /* ── 집 : 타임라인 보기(15분 그리드, 습관은 시작시각·소요시간에 맞춰 배치) ── */
   .tl-grid{display:grid;grid-template-columns:44px 1fr;grid-auto-rows:13px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 0;overflow:hidden;touch-action:none;}
@@ -551,7 +551,7 @@
     <div class="field"><label>할일 제목</label><input id="td_title" type="text" placeholder="예: 은행 다녀오기" /></div>
     <div class="field split">
       <div><label>시작 날짜</label><input id="td_start" type="date" /></div>
-      <div><label>종료 날짜(선택, 기간이면)</label><input id="td_end" type="date" /></div>
+      <div><label>종료 날짜(선택, 반복이 끝나는 날)</label><input id="td_end" type="date" /></div>
     </div>
     <div class="field"><label>시간(선택)</label><input id="td_time" type="time" /></div>
     <div class="sheet-actions">
@@ -582,6 +582,10 @@
         <label>주기(숫자)</label>
         <input id="hs_repeat_interval" type="number" min="1" value="1" />
       </div>
+    </div>
+    <div class="field split">
+      <div><label>시작일(반복이 시작된 날)</label><input id="hs_start" type="date" /></div>
+      <div><label>종료일(선택, 반복이 끝나는 날)</label><input id="hs_end" type="date" /></div>
     </div>
     <div class="field"><label>카테고리</label><select id="hs_category"></select></div>
     <div class="hs-cat-manage-label">카테고리 관리 (이름 수정 · 삭제)</div>
@@ -848,14 +852,10 @@
   async function completeTodoRepeatIfNeeded(todo) {
     if (!todo || !todo.repeat_unit) return;
     const nextStart = nextRepeatDateStr(todo.start_date, todo.repeat_unit, todo.repeat_interval);
-    const isRange = todo.end_date && todo.end_date !== todo.start_date;
-    let nextEnd = null;
-    if (isRange) {
-      const spanDays = Math.round((new Date(todo.end_date + "T00:00:00") - new Date(todo.start_date + "T00:00:00")) / 86400000);
-      nextEnd = addDaysStr(nextStart, spanDays);
-    }
+    // 종료일(반복이 끝나는 날, 선택)을 넘어서면 다음 회차를 만들지 않고 반복을 그만둠. 종료일 자체는 그대로 다음 회차에도 이어서 넘겨줌.
+    if (todo.end_date && nextStart > todo.end_date) return;
     const { error } = await sb.from("tok_todos").insert({
-      title: todo.title, start_date: nextStart, end_date: nextEnd,
+      title: todo.title, start_date: nextStart, end_date: todo.end_date || null,
       todo_time: todo.todo_time || null, duration_minutes: todo.duration_minutes || null,
       tag_id: todo.tag_id || null, repeat_unit: todo.repeat_unit, repeat_interval: todo.repeat_interval,
     });
@@ -901,7 +901,7 @@
   function todayFocusTodos() {
     const t = todayStr();
     return todos
-      .filter(td => !td.is_done && td.start_date <= t && (td.end_date || td.start_date) >= t)
+      .filter(td => !td.is_done && td.start_date === t)
       .sort((a, b) => (a.todo_time || "99:99:99").localeCompare(b.todo_time || "99:99:99") || String(a.title || "").localeCompare(String(b.title || ""), "ko"));
   }
   function focusTimeWindow(todo) {
@@ -1278,15 +1278,18 @@
   // 완료 이력이 있으면 마지막 완료일 + 주기.
   function habitNextDueDate(habit, dateStr) {
     const last = habitLastDoneBefore(habit.id, dateStr);
-    if (!last) return habit.created_at ? habit.created_at.slice(0, 10) : dateStr;
+    if (!last) return habit.start_date || (habit.created_at ? habit.created_at.slice(0, 10) : dateStr);
     const interval = habit.repeat_interval || 1;
     if (habit.repeat_unit === "week") return addDaysStr(last, interval * 7);
     if (habit.repeat_unit === "month") return addMonthsStr(last, interval);
     return addDaysStr(last, interval); // "day"
   }
-  // 이 날짜에 이 습관을 보여줘야 하는지 — 반복 없음이면 항상 표시, 이미 이 날짜에 체크돼 있으면 항상 표시(해제 가능하게),
+  // 이 날짜에 이 습관을 보여줘야 하는지 — 시작일 이전/종료일 이후면 항상 숨김,
+  // 그 범위 안에서는: 반복 없음이면 항상 표시, 이미 이 날짜에 체크돼 있으면 항상 표시(해제 가능하게),
   // 그 외엔 다음 예정일이 이 날짜 이전이거나 같을 때만(안 하면 계속 밀려서 계속 보임)
   function isHabitDueOnDate(habit, dateStr, doneOnThisDate) {
+    if (habit.start_date && dateStr < habit.start_date) return false;
+    if (habit.end_date && dateStr > habit.end_date) return false;
     if (!habit.repeat_unit) return true;
     if (doneOnThisDate) return true;
     return habitNextDueDate(habit, dateStr) <= dateStr;
@@ -1310,7 +1313,7 @@
   }
   function habitNextDueAfter(habit, dateStr) {
     const last = habitLastDoneOnOrBefore(habit.id, dateStr);
-    if (!last) return habit.created_at ? habit.created_at.slice(0, 10) : dateStr;
+    if (!last) return habit.start_date || (habit.created_at ? habit.created_at.slice(0, 10) : dateStr);
     return advanceDue(last, habit);
   }
 
@@ -1402,8 +1405,8 @@
     const cat = itemTagPool(kind).find(c => c.id === catId);
     return cat ? (cat.color || null) : null;
   }
-  // 일정 항목 옆에 붙이는 범주색 동그라미("일정"이라는 글자 배지 대신) — 체크박스(네모)와 크기·자리는 맞추되 항상 색이 찬 원으로 구분.
-  // size: 이 동그라미가 들어갈 자리의 체크박스 크기에 맞춰 호출부에서 지정(하루종일·타임블럭=20, 타임라인=14).
+  // 일정 항목 옆에 붙이는 범주색 네모("일정"이라는 글자 배지 대신) — 체크박스와 모양·크기·간격을 통일하고, 항상 색이 찬 상태로 구분(할일/습관은 체크 전엔 빈 네모, 체크하면 체크표시+줄긋기).
+  // size: 이 네모가 들어갈 자리의 체크박스 크기에 맞춰 호출부에서 지정(하루종일·타임블럭=20, 타임라인=14).
   function eventDotHtml(catId, size = 20) {
     return `<span class="agenda-event-dot" style="width:${size}px;height:${size}px;background:${itemTagColor("event", catId) || "#c9457a"};"></span>`;
   }
@@ -1421,7 +1424,7 @@
   async function renderAgendaAllDay() {
     const dateStr = homeAgendaDate;
     $("agendaDateLabel").textContent = formatDate(dateStr);
-    const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr && !td.todo_time);
+    const dayTodos = todos.filter(td => td.start_date === dateStr && !td.todo_time);
     const dayUntimedEvents = events.filter(e => e.event_date <= dateStr && (e.end_date || e.event_date) >= dateStr && !e.event_time);
     const doneSetAll = await fetchLogsForDate(dateStr);
     const untimedHabits = tasks.filter(t => t.is_active && t.start_minute == null && isHabitDueOnDate(t, dateStr, doneSetAll.has(t.id)));
@@ -1563,9 +1566,10 @@
         const { error: delErr } = await sb.from("tok_todos").delete().eq("id", id);
         if (delErr) { alert("이동 실패: " + delErr.message); return; }
       } else {
-        const patch = zone === "planday" ? { start_date: zoneObj.date, end_date: null }
-          : zone === "today-allday" ? { start_date: todayStr(), end_date: null, todo_time: null }
-          : { start_date: todayStr(), end_date: null, todo_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
+        // 시작일은 "이 회차가 놓인 날"이라 드래그하면 그대로 바뀌지만, 종료일은 반복이 끝나는 날(선택)이라 드래그와 무관 — 건드리지 않음.
+        const patch = zone === "planday" ? { start_date: zoneObj.date }
+          : zone === "today-allday" ? { start_date: todayStr(), todo_time: null }
+          : { start_date: todayStr(), todo_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
         const { error } = await sb.from("tok_todos").update(patch).eq("id", id);
         if (error) { alert("이동 실패: " + error.message); return; }
       }
@@ -1573,7 +1577,7 @@
       if (zone === "someday") return; // 이미 언젠가라 놓아도 변화 없음
       const s = somedayItems.find(x => x.id === id);
       if (!s) return;
-      const patch = { title: s.title, is_done: s.is_done, end_date: null };
+      const patch = { title: s.title, is_done: s.is_done };
       if (zone === "planday") patch.start_date = zoneObj.date;
       else if (zone === "today-allday") patch.start_date = todayStr();
       else { patch.start_date = todayStr(); patch.todo_time = minutesToHHMM(zoneObj.startMinute) + ":00"; }
@@ -1655,9 +1659,9 @@
     const dayEvents = events.filter(e => e.event_date <= dateStr && (e.end_date || e.event_date) >= dateStr && e.event_time);
     const eventItems = dayEvents.map(e => ({
       kind: "event", id: e.id, name: e.title,
-      start_minute: hhmmToMinutes(e.event_time), duration_minutes: 30, done: false, cat_id: e.category_id,
+      start_minute: hhmmToMinutes(e.event_time), duration_minutes: e.duration_minutes || 30, done: false, cat_id: e.category_id,
     }));
-    const dayTimedTodos = todos.filter(td => td.todo_time && td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+    const dayTimedTodos = todos.filter(td => td.todo_time && td.start_date === dateStr);
     const todoItems = dayTimedTodos.map(td => ({
       kind: "todo", id: td.id, name: td.title,
       start_minute: hhmmToMinutes(td.todo_time.slice(0, 5)), duration_minutes: td.duration_minutes || 30, done: td.is_done, cat_id: td.tag_id,
@@ -1677,7 +1681,7 @@
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check agenda-item-check" />`)
       : it.kind === "todo"
       ? agCheckWrap(`<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check agenda-item-check" />`)
-      : eventDotHtml(it.cat_id); // 일정은 체크박스 자리에 범주색 동그라미로 대신 표시
+      : eventDotHtml(it.cat_id); // 일정은 체크박스 자리에 범주색 네모로 대신 표시
     // 항목마다 카드처럼 보여서 공간을 너무 차지한다고 해서, 다가오는 계획 목록과 똑같이 카드 없는 플랫한 한 줄로 변경.
     return `<div class="plan-row ag-block-row ${it.done ? "done" : ""}" data-id="${it.id}" data-kind="${it.kind}">
       ${lead}
@@ -1943,7 +1947,7 @@
       const kind = task.dataset.kind;
       const origStart = parseInt(task.dataset.start, 10);
       const origDuration = parseInt(task.dataset.duration, 10);
-      const resizable = kind === "habit" || kind === "todo"; // 일정(고정 스케줄)만 길이 개념이 없어 조절 제외
+      const resizable = true; // 습관/할일/일정 전부 드래그로 길이(소요시간) 조절 가능
 
       let dragKind = null, startY = 0, moved = false, cancelled = false, pressed = false, edgeAtStart = null, isMouse = false;
       let longPressTimer = null;
@@ -2106,9 +2110,9 @@
           if (error) { alert((k === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
         } else {
           const { error } = await sb.from("tok_events").update({
-            event_time: minutesToHHMM(pendingStart) + ":00",
+            event_time: minutesToHHMM(pendingStart) + ":00", duration_minutes: pendingDuration,
           }).eq("id", id);
-          if (error) { alert("이동 실패: " + error.message); }
+          if (error) { alert((k === "move" ? "이동" : "시간 조절") + " 실패: " + error.message); }
         }
         await loadAll();
       };
@@ -2269,10 +2273,14 @@
     const habitNextDate = new Map(active.map(t => [t.id, t.repeat_unit ? habitNextDueAfter(t, todayStr()) : null]));
 
     $("planUpcomingBoard").innerHTML = days.map((dateStr, idx) => {
-      const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
+      const dayTodos = todos.filter(td => td.start_date === dateStr);
       const dayEvents = events.filter(e => e.event_date <= dateStr && (e.end_date || e.event_date) >= dateStr).sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
       const doneSet = logsByDate[dateStr];
-      const dayHabits = active.filter(t => !t.repeat_unit || habitNextDate.get(t.id) === dateStr);
+      const dayHabits = active.filter(t => {
+        if (t.start_date && dateStr < t.start_date) return false;
+        if (t.end_date && dateStr > t.end_date) return false;
+        return !t.repeat_unit || habitNextDate.get(t.id) === dateStr;
+      });
 
       const habitHtml = dayHabits.map(t => `
         <div class="plan-row habit planup-drag-row ${doneSet.has(t.id) ? "done" : ""}" data-id="${t.id}" data-kind="habit">
@@ -2286,14 +2294,12 @@
           ${isRange ? `<span class="plan-range-tag">~${formatDateShort(e.end_date)}</span>` : e.event_time ? `<span class="plan-time">${e.event_time.slice(0, 5)}</span>` : ""}
         </div>`;
       }).join("");
-      const todoHtml = dayTodos.map(td => {
-        const isRange = td.end_date && td.end_date !== td.start_date;
-        return `<div class="plan-row todo ${isRange ? "" : "planup-drag-row"}" data-id="${td.id}" data-kind="todo">
+      const todoHtml = dayTodos.map(td => `
+        <div class="plan-row todo planup-drag-row" data-id="${td.id}" data-kind="todo">
           <input type="checkbox" ${td.is_done ? "checked" : ""} data-id="${td.id}" class="planup-todo-check" />
           <span class="plan-todo-title planup-todo-title">${escapeHtml(td.title)}</span>
-          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : td.todo_time ? `<span class="plan-time">${td.todo_time.slice(0, 5)}</span>` : ""}
-        </div>`;
-      }).join("");
+          ${td.todo_time ? `<span class="plan-time">${td.todo_time.slice(0, 5)}</span>` : ""}
+        </div>`).join("");
       const bodyHtml = habitHtml + eventHtml + todoHtml;
       const hasItems = !!(dayHabits.length || dayEvents.length || dayTodos.length);
       const dotColor = hasItems ? PLAN_DAY_DOTS[idx % PLAN_DAY_DOTS.length] : "#c7c2d6";
@@ -2565,16 +2571,13 @@
     const days = planDayList();
 
     $("planBoard").innerHTML = days.map((dateStr, idx) => {
-      const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
-      const todoHtml = dayTodos.map(td => {
-        const isRange = td.end_date && td.end_date !== td.start_date;
-        return `<div class="plan-row todo ${td.is_done?'done':''}" data-id="${td.id}">
+      const dayTodos = todos.filter(td => td.start_date === dateStr);
+      const todoHtml = dayTodos.map(td => `
+        <div class="plan-row todo ${td.is_done?'done':''}" data-id="${td.id}">
           <input type="checkbox" ${td.is_done?"checked":""} data-id="${td.id}" class="plan-todo-check" />
           <span class="plan-todo-title">${escapeHtml(td.title)}</span>
-          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(td.end_date)}</span>` : ""}
           <button class="plan-todo-edit" data-id="${td.id}">✎</button>
-        </div>`;
-      }).join("");
+        </div>`).join("");
       const bodyHtml = todoHtml;
       return `<div class="plan-day" data-idx="${idx}" data-date="${dateStr}">
         <div class="plan-day-label">${idx===0 ? "오늘" : formatDateShort(dateStr)}</div>
@@ -2749,6 +2752,8 @@
     $("habitSheetBg").dataset.editId = habit.id;
     $("hs_repeat_unit").value = habit.repeat_unit || "";
     $("hs_repeat_interval").value = habit.repeat_interval || 1;
+    $("hs_start").value = habit.start_date || todayStr();
+    $("hs_end").value = habit.end_date || "";
     populateHabitCategorySelect(habit.category_id);
     renderHabitCategoryList();
     $("hs_newcat_name").value = "";
@@ -2828,7 +2833,11 @@
     const repeat_unit = $("hs_repeat_unit").value || null;
     const repeat_interval = repeat_unit ? (parseInt($("hs_repeat_interval").value, 10) || 1) : null;
     const category_id = $("hs_category").value || null;
-    const { error } = await sb.from("tok_habits").update({ repeat_unit, repeat_interval, category_id }).eq("id", editId);
+    const start_date = $("hs_start").value;
+    if (!start_date) { alert("시작일을 입력해주세요."); return; }
+    const end_date = $("hs_end").value || null;
+    if (end_date && end_date < start_date) { alert("종료일은 시작일보다 빠를 수 없어요."); return; }
+    const { error } = await sb.from("tok_habits").update({ repeat_unit, repeat_interval, category_id, start_date, end_date }).eq("id", editId);
     if (error) { alert("저장 실패: " + error.message); return; }
     $("habitSheetBg").classList.remove("open");
     await loadAll();
@@ -3022,11 +3031,15 @@
       const cat = habitCategories.find(c => c.id === t.category_id);
       const repeatText = t.repeat_unit ? `${t.repeat_interval || 1}${{day:"일",week:"주",month:"개월"}[t.repeat_unit]}마다` : "반복 없음";
       const catChip = cat ? `<span class="habit-cat-chip" style="background:${cat.color || "var(--accent-soft)"}">${escapeHtml(cat.name)}</span>` : "";
+      // 시작일이 아직 안 왔거나 종료일이 있을 때만 기간을 같이 보여줌(평범하게 계속 진행 중인 습관은 굳이 안 보여줘서 안 복잡하게).
+      const todayS = todayStr();
+      const windowText = t.end_date ? ` · ~${formatDateShort(t.end_date)}까지`
+        : (t.start_date && t.start_date > todayS) ? ` · ${formatDateShort(t.start_date)}부터 시작` : "";
       return `
       <div class="todo-row ${t.is_active?"":"inactive"}" data-id="${t.id}">
         <div class="info">
           <div class="name">${escapeHtml(t.name)}</div>
-          <div class="block-tag">${t.start_minute != null ? minutesToHHMM(t.start_minute) : "시간 없음"} · ${t.duration_minutes || 30}분 · ${repeatText}${catChip}</div>
+          <div class="block-tag">${t.start_minute != null ? minutesToHHMM(t.start_minute) : "시간 없음"} · ${t.duration_minutes || 30}분 · ${repeatText}${windowText}${catChip}</div>
         </div>
         <button class="historybtn" data-id="${t.id}" title="기록 보기">🗓</button>
         <button class="settingsbtn" data-id="${t.id}" title="반복·카테고리 설정">⚙</button>
@@ -3131,7 +3144,7 @@
     const startVal = $("tk_start").value; // "HH:MM" 또는 빈 문자열
     const start_minute = startVal ? (parseInt(startVal.slice(0,2),10)*60 + parseInt(startVal.slice(3,5),10)) : null;
     const duration_minutes = parseInt($("tk_duration").value, 10) || 30;
-    const { error } = await sb.from("tok_habits").insert({ name, sort_order: tasks.length, start_minute, duration_minutes, repeat_unit: "day", repeat_interval: 1 });
+    const { error } = await sb.from("tok_habits").insert({ name, sort_order: tasks.length, start_minute, duration_minutes, repeat_unit: "day", repeat_interval: 1, start_date: todayStr() });
     if (error) { alert("저장 실패: " + error.message); return; }
     $("tk_name").value = "";
     await loadAll();
@@ -3249,6 +3262,7 @@
       ({ error } = await sb.from("tok_habits").insert({
         name: (item.name || "이름 없는 습관") + " (사본)", category_id: item.category_id || null,
         repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval,
+        start_date: item.start_date || todayStr(), end_date: item.end_date || null,
         start_minute: item.start_minute, duration_minutes: item.duration_minutes || 30,
       }));
     } else if (kind === "todo") {
@@ -3260,7 +3274,7 @@
     } else {
       ({ error } = await sb.from("tok_events").insert({
         title: (item.title || "이름 없는 일정") + " (사본)", event_date: item.event_date, end_date: item.end_date || null,
-        event_time: item.event_time || null, memo: item.memo || null, category_id: item.category_id || null,
+        event_time: item.event_time || null, duration_minutes: item.duration_minutes || null, memo: item.memo || null, category_id: item.category_id || null,
         repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval,
       }));
     }
@@ -3280,6 +3294,7 @@
     const { error: insErr } = await sb.from("tok_habits").insert({
       name: t.title, category_id: t.tag_id || null,
       repeat_unit: t.repeat_unit, repeat_interval: t.repeat_interval,
+      start_date: t.start_date || todayStr(), end_date: t.end_date || null,
       start_minute: startMinute, duration_minutes: t.duration_minutes || 30,
     });
     if (insErr) { alert("전환 실패: " + insErr.message); return; }
@@ -3300,7 +3315,7 @@
     const { error: insErr } = await sb.from("tok_todos").insert({
       title: t.name, tag_id: t.category_id || null,
       repeat_unit: t.repeat_unit, repeat_interval: t.repeat_interval,
-      start_date: homeAgendaDate, end_date: null,
+      start_date: t.start_date || homeAgendaDate, end_date: t.end_date || null,
       todo_time, duration_minutes: t.duration_minutes || null,
     });
     if (insErr) { alert("전환 실패: " + insErr.message); return; }
@@ -3347,10 +3362,12 @@
     bg.dataset.kind = kind;
     bg.dataset.editId = id;
     $("idt_title").textContent = (kind === "habit" ? "습관" : kind === "todo" ? "할일" : "일정") + " 날짜/시간 변경";
-    $("idt_date_row").style.display = (kind === "todo" || kind === "event") ? "flex" : "none";
-    $("idt_end_wrap").style.display = (kind === "todo" || kind === "event") ? "block" : "none";
+    $("idt_date_row").style.display = "flex"; // 이제 습관·할일·일정 전부 시작/종료일 있음
+    $("idt_end_wrap").style.display = "block";
     $("idt_repeat_row").style.display = "flex"; // 이제 습관·할일·일정 전부 반복 설정 가능
-    $("idt_date_label").textContent = (kind === "todo" || kind === "event") ? "시작 날짜" : "날짜";
+    // 할일/일정: 시작일=반복이 시작된 날(필수), 종료일=반복이 끝나는 날(선택). 습관도 2026-09-06부터 동일.
+    // 일정만 예외로 시작/종료일이 "지속시간,날짜"(한 회차가 며칠짜리인지)를 의미(반복해도 그 길이가 유지됨).
+    $("idt_date_label").textContent = "시작 날짜";
     $("idt_date").value = "";
     $("idt_end").value = "";
     $("idt_time").value = "";
@@ -3365,6 +3382,8 @@
       $("idt_end").value = item.end_date || "";
       $("idt_time").value = item.event_time ? item.event_time.slice(0, 5) : "";
     } else {
+      $("idt_date").value = item.start_date || todayStr();
+      $("idt_end").value = item.end_date || "";
       $("idt_time").value = item.start_minute != null ? minutesToHHMM(item.start_minute) : "";
     }
     bg.classList.add("open");
@@ -3389,8 +3408,12 @@
       if (endVal && endVal < dateVal) { alert("종료 날짜는 시작 날짜보다 빠를 수 없어요."); return; }
       patch = { event_date: dateVal, end_date: endVal, event_time: timeVal ? timeVal + ":00" : null, repeat_unit, repeat_interval };
     } else {
+      const startVal = $("idt_date").value;
+      if (!startVal) { alert("시작 날짜를 입력해주세요."); return; }
+      const endVal = $("idt_end").value || null;
+      if (endVal && endVal < startVal) { alert("종료 날짜는 시작 날짜보다 빠를 수 없어요."); return; }
       if (!timeVal) { alert("시간을 입력해주세요."); return; }
-      patch = { start_minute: hhmmToMinutes(timeVal), repeat_unit, repeat_interval };
+      patch = { start_date: startVal, end_date: endVal, start_minute: hhmmToMinutes(timeVal), repeat_unit, repeat_interval };
     }
     const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
     const { error } = await sb.from(table).update(patch).eq("id", id);
