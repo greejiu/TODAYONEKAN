@@ -160,16 +160,17 @@
   /* ── 집 : 2열 레이아웃 (1열 습관 실행, 2열 다가오는 계획+언젠가 할일) ── */
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
   .home-col{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 6px 20px rgba(150,130,200,.08);}
-  .home-col-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
-  .home-col-head .title{font-size:13px;font-weight:700;color:var(--text);}
-  .home-col-head .hint{font-size:11px;color:var(--sub);}
+  .home-col-head{margin-bottom:10px;}
+  .home-col-head .title{font-size:13px;font-weight:700;color:var(--text);text-align:center;}
+  .home-col-head .hint-row{display:flex;justify-content:flex-end;margin-top:6px;}
+  .home-col-head .hint{font-size:11px;color:var(--accent);background:var(--accent-soft);font-weight:700;padding:3px 10px;border-radius:999px;}
   @media (max-width:760px){ .home-grid{grid-template-columns:1fr;} }
 
   /* ── 집 : 오늘/다가오는 계획/언젠가 3열 요약 ── */
   .home-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start;}
   @media (max-width:900px){ .home-grid3{grid-template-columns:1fr;} }
-  .ag-header-row{display:flex;align-items:center;gap:8px;}
-  .agenda-head{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;background:linear-gradient(135deg,#fff8e6,#fff3e0);border:1px solid var(--line);border-radius:16px;padding:8px 6px;}
+  .agenda-head{display:flex;align-items:center;justify-content:space-between;gap:8px;background:linear-gradient(135deg,#fff8e6,#fff3e0);border:1px solid var(--line);border-radius:16px;padding:8px 6px;}
+  .agenda-date-wrap{display:flex;align-items:center;gap:6px;}
   .agenda-date-emoji{font-size:13px;}
   #agendaDateLabel{font-weight:700;font-size:13px;}
   .agenda-nav{background:none;border:none;color:var(--sub);cursor:pointer;font-size:16px;line-height:1;padding:2px 8px;border-radius:8px;}
@@ -381,13 +382,10 @@
 
         <div class="home-grid3">
           <div class="home-col">
-            <div class="ag-header-row">
-              <div class="agenda-head">
-                <button id="agendaPrevBtn" class="agenda-nav">‹</button>
-                <span class="agenda-date-emoji">📅</span><span id="agendaDateLabel" style="cursor:pointer;">오늘</span>
-                <button id="agendaNextBtn" class="agenda-nav">›</button>
-              </div>
-              <button id="agendaTodayBtn" class="today-btn">오늘 🌸</button>
+            <div class="agenda-head">
+              <button id="agendaPrevBtn" class="agenda-nav">‹</button>
+              <span class="agenda-date-wrap"><span class="agenda-date-emoji">📅</span><span id="agendaDateLabel" style="cursor:pointer;">오늘</span></span>
+              <button id="agendaNextBtn" class="agenda-nav">›</button>
             </div>
 
             <div class="view-toggle-row" style="margin-top:10px;">
@@ -395,6 +393,7 @@
                 <button id="agendaViewBlockBtn" class="active">타임블럭</button>
                 <button id="agendaViewTimelineBtn">타임라인</button>
               </div>
+              <button id="agendaTodayBtn" class="today-btn">오늘 🌸</button>
             </div>
 
             <div class="ag-section-head" style="margin-top:10px;">
@@ -410,15 +409,15 @@
 
           <div class="home-col">
             <div class="home-col-head">
-              <span class="title">🗓 다가오는 계획</span>
-              <span class="hint">앞으로 7일</span>
+              <div class="title">🗓 다가오는 계획</div>
+              <div class="hint-row"><span class="hint">이번 주 7일</span></div>
             </div>
             <div id="planUpcomingBoard"></div>
           </div>
 
           <div class="home-col">
             <div class="home-col-head">
-              <span class="title">💭 언젠가</span>
+              <div class="title">💭 언젠가</div>
             </div>
             <div id="somedayZone">
               <div id="somedaySummaryList"></div>
