@@ -133,6 +133,16 @@
   .someday-row:last-child{border-bottom:none;}
   .someday-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
   .someday-row span{flex:1;}
+  .someday-row .tag-dot-sm{flex:0 0 auto;}
+  /* 언젠가 정렬/태그필터 툴바(집 카드+할일 탭 공용) */
+  .tag-dot-sm{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .someday-toolbar{display:flex;justify-content:flex-end;margin-bottom:6px;}
+  .someday-sort-select{font-size:11px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--sub);cursor:pointer;}
+  .someday-tag-chips{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;}
+  .someday-tag-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--sub);cursor:pointer;}
+  .someday-tag-chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700;}
+  .someday-more-row{text-align:center;font-size:12px;color:var(--accent);cursor:pointer;padding:6px 0;}
+  .someday-more-row:hover{text-decoration:underline;}
   .someday-row.done span{color:var(--sub);text-decoration:line-through;}
 
   /* ── 팝업 없이 바로 입력하는 공통 인라인 추가 스타일 ── */
@@ -472,6 +482,10 @@
               <div class="home-col-head">
                 <div class="title">언젠가</div>
               </div>
+              <div class="someday-toolbar">
+                <select id="somedayHomeSortSelect" class="someday-sort-select"></select>
+              </div>
+              <div id="somedayHomeTagChips" class="someday-tag-chips"></div>
               <div id="somedayZone">
                 <div id="somedaySummaryList"></div>
               </div>
@@ -508,6 +522,10 @@
             <input id="somedayInput" type="text" placeholder="나중에 할 것 같은 일 아무거나 적어보세요" />
             <button id="somedayAddBtn">추가</button>
           </div>
+          <div class="someday-toolbar">
+            <select id="somedayTabSortSelect" class="someday-sort-select"></select>
+          </div>
+          <div id="somedayTabTagChips" class="someday-tag-chips"></div>
           <div id="somedayList"></div>
         </div>
       </div>
@@ -769,6 +787,12 @@
   let logsToday = new Set(); // habit_id set, 오늘 완료된 것
   let events = [];
   let somedayItems = [];
+  // 언젠가 목록 정렬/필터/더보기 상태 — 집 카드와 할일 탭이 각자 따로 기억(둘이 다른 뷰라 독립적으로 고를 수 있어야 함).
+  let somedayHomeSort = "recent"; // "recent"(최근순)|"old"(오래된순)|"name"(이름순)
+  let somedayHomeFilterTag = null; // null=전체, 아니면 tok_habit_categories.id
+  let somedayHomeVisible = 8; // "+더보기" 누를 때마다 8씩 증가
+  let somedayTabSort = "recent";
+  let somedayTabFilterTag = null;
   let timeBlocks = []; // tok_time_blocks: 타임블럭 탭의 이름표 그룹핑용
   let todos = []; // tok_todos: 다가오는 계획 보드용 (날짜 있는 1회성 할일)
   let habitCategories = []; // tok_habit_categories: 습관·할일 공용 "태그"(이름+색상) — 할일은 tag_id 컬럼으로 이 풀을 공유해서 씀
@@ -2653,24 +2677,74 @@
     board.onpointercancel = () => { clearHighlight(); planUpcomingAddState = null; };
   }
 
-  // "언젠가" 열: 요약만(최대 8개). 다른 열과 동일하게 빈칸 클릭=추가, 짧은 클릭=이름 인라인수정, 드래그=다른 날짜/오늘로 이동.
+  // 언젠가 목록 정렬(최근순/오래된순/이름순) — 집 카드·할일 탭 공용으로 씀.
+  function sortSomedayList(items, sortMode) {
+    const arr = [...items];
+    if (sortMode === "old") arr.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    else if (sortMode === "name") arr.sort((a, b) => (a.title || "").localeCompare(b.title || "", "ko"));
+    else arr.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")); // 기본값 recent(최근순)
+    return arr;
+  }
+  // 언젠가 목록 태그 필터 — tagId가 null이면(=전체) 그대로 통과.
+  function filterSomedayList(items, tagId) {
+    return tagId ? items.filter(s => s.tag_id === tagId) : items;
+  }
+  // 정렬 select 채우기(최근순/오래된순/이름순 공용) — onChange(newMode)를 호출부에서 넘겨받아 상태 갱신+재렌더.
+  function renderSomedaySortSelect(selectEl, current, onChange) {
+    if (!selectEl.dataset.filled) {
+      selectEl.innerHTML = `<option value="recent">최근순</option><option value="old">오래된순</option><option value="name">이름순</option>`;
+      selectEl.dataset.filled = "1";
+    }
+    selectEl.value = current;
+    selectEl.onchange = () => onChange(selectEl.value);
+  }
+  // 태그 필터 칩 채우기(전체 + 태그·할일 공용 풀 habitCategories) — onPick(tagIdOrNull)을 호출부에서 넘겨받음.
+  function renderSomedayTagChips(hostEl, activeTagId, onPick) {
+    const chips = [`<button type="button" class="someday-tag-chip${activeTagId ? "" : " active"}" data-tag="">전체</button>`]
+      .concat(habitCategories.map(c => `<button type="button" class="someday-tag-chip${activeTagId === c.id ? " active" : ""}" data-tag="${c.id}"><span class="tag-dot-sm" style="background:${c.color || "var(--accent)"};"></span>${escapeHtml(c.name)}</button>`));
+    hostEl.innerHTML = chips.join("");
+    hostEl.querySelectorAll("button[data-tag]").forEach(btn => {
+      btn.onclick = () => onPick(btn.dataset.tag || null);
+    });
+  }
+
+  // "언젠가" 열: 정렬/태그필터 적용 후 일정 개수(somedayHomeVisible, 기본 8)까지만 보여주고 나머지는 "+더보기"로 8개씩 더.
   // ⚠️ data-id 대신 data-someday-id를 씀: 습관 탭의 attachBlockDrag가 전역으로 ".task-row[data-id]"를
   //   찾기 때문에, 여기서 data-id를 그대로 쓰면 이 행에도 그 핸들러가 잘못 붙어버림(이름공간 충돌 방지).
   function renderSomedaySummary() {
-    const items = somedayItems.filter(s => !s.is_done).slice(0, 8);
+    const sortSel = $("somedayHomeSortSelect");
+    if (sortSel) renderSomedaySortSelect(sortSel, somedayHomeSort, (v) => { somedayHomeSort = v; somedayHomeVisible = 8; renderSomedaySummary(); });
+    const chipsHost = $("somedayHomeTagChips");
+    if (chipsHost) renderSomedayTagChips(chipsHost, somedayHomeFilterTag, (tagId) => { somedayHomeFilterTag = tagId; somedayHomeVisible = 8; renderSomedaySummary(); });
+
+    const undone = somedayItems.filter(s => !s.is_done);
+    const all = filterSomedayList(sortSomedayList(undone, somedayHomeSort), somedayHomeFilterTag);
+    const items = all.slice(0, somedayHomeVisible);
     const rowsHtml = items.map(item => `
       <div class="task-row ag-someday-row" data-someday-id="${item.id}">
         <input type="checkbox" data-id="${item.id}" class="somedaysum-check" />
+        ${item.tag_id ? `<span class="tag-dot-sm" style="background:${itemTagColor("someday", item.tag_id) || "var(--accent)"};"></span>` : ""}
         <span class="agenda-title">${escapeHtml(item.title)}</span>
       </div>`).join("");
+    const moreHtml = all.length > items.length ? `<div class="someday-more-row" data-somedaymore="1">+ 더보기 (${all.length - items.length}개 더)</div>` : "";
     $("somedaySummaryList").innerHTML = items.length
-      ? rowsHtml + `<div class="block-add-row" data-somedayadd="1"></div>`
-      : `<div class="agenda-empty-block block-add-row" data-somedayadd="1">등록된 항목이 없어요. 눌러서 추가</div>`;
+      ? rowsHtml + moreHtml + `<div class="block-add-row" data-somedayadd="1"></div>`
+      : undone.length === 0
+        ? `<div class="agenda-empty-block block-add-row" data-somedayadd="1">등록된 항목이 없어요. 눌러서 추가</div>`
+        : `<div class="agenda-empty-block">이 태그의 항목이 없어요.</div><div class="block-add-row" data-somedayadd="1"></div>`;
     document.querySelectorAll(".somedaysum-check").forEach(cb => {
       cb.onchange = async () => {
         const { error } = await sb.from("tok_someday").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
         if (error) { alert("변경 실패: " + error.message); return; }
         await loadAll();
+      };
+    });
+    const moreBtn = document.querySelector('#somedaySummaryList .someday-more-row[data-somedaymore]');
+    if (moreBtn) moreBtn.onclick = () => { somedayHomeVisible += 8; renderSomedaySummary(); };
+    document.querySelectorAll(".ag-someday-row[data-someday-id]").forEach(row => {
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        showSomedayItemMenu(e.clientX, e.clientY, row.dataset.somedayId);
       };
     });
     attachSomedayDrag();
@@ -3068,16 +3142,25 @@
     await loadAll();
   };
 
-  // ── 집 : 언젠가 할일 ──
+  // ── 할일 탭 : 언젠가 할일 관리(전체 목록, 정렬/태그필터 적용, 삭제 가능) ──
   function renderSomeday() {
-    const sorted = [...somedayItems].sort((a, b) => (a.is_done === b.is_done) ? 0 : (a.is_done ? 1 : -1));
-    $("somedayList").innerHTML = sorted.map(item => `
+    const sortSel = $("somedayTabSortSelect");
+    if (sortSel) renderSomedaySortSelect(sortSel, somedayTabSort, (v) => { somedayTabSort = v; renderSomeday(); });
+    const chipsHost = $("somedayTabTagChips");
+    if (chipsHost) renderSomedayTagChips(chipsHost, somedayTabFilterTag, (tagId) => { somedayTabFilterTag = tagId; renderSomeday(); });
+
+    const filtered = filterSomedayList(somedayItems, somedayTabFilterTag);
+    const undone = sortSomedayList(filtered.filter(s => !s.is_done), somedayTabSort);
+    const done = sortSomedayList(filtered.filter(s => s.is_done), somedayTabSort);
+    const sorted = [...undone, ...done]; // 완료 항목은 항상 뒤로(기존 규칙 유지), 각 그룹 안에서 선택한 정렬 기준 적용
+    $("somedayList").innerHTML = sorted.length ? sorted.map(item => `
       <div class="someday-row ${item.is_done?'done':''}" data-id="${item.id}">
         <input type="checkbox" ${item.is_done?"checked":""} data-id="${item.id}" class="someday-check" />
+        ${item.tag_id ? `<span class="tag-dot-sm" style="background:${itemTagColor("someday", item.tag_id) || "var(--accent)"};"></span>` : ""}
         <span class="someday-title">${escapeHtml(item.title)}</span>
         <button class="del" data-id="${item.id}">삭제</button>
       </div>
-    `).join("");
+    `).join("") : `<div class="agenda-empty-block">${somedayTabFilterTag ? "이 태그의 항목이 없어요." : "등록된 언젠가 할일이 없어요."}</div>`;
     document.querySelectorAll(".someday-check").forEach(cb => {
       cb.onchange = async () => {
         const { error } = await sb.from("tok_someday").update({ is_done: cb.checked }).eq("id", cb.dataset.id);
@@ -3144,16 +3227,11 @@
         input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(); });
       };
     });
-    // 오른쪽 클릭 → 삭제 메뉴
+    // 오른쪽 클릭 → 태그 변경/삭제 메뉴
     document.querySelectorAll(".someday-row").forEach(row => {
       row.oncontextmenu = (e) => {
         e.preventDefault();
-        showDeleteMenu(e.clientX, e.clientY, async () => {
-          const { error } = await sb.from("tok_someday").delete().eq("id", row.dataset.id);
-          if (error) { alert("삭제 실패: " + error.message); return; }
-          somedayItems = somedayItems.filter(s => s.id !== row.dataset.id);
-          renderSomeday();
-        });
+        showSomedayItemMenu(e.clientX, e.clientY, row.dataset.id);
       };
     });
   }
@@ -3467,6 +3545,7 @@
   function agendaItemById(kind, id) {
     if (kind === "habit") return tasks.find(t => t.id === id);
     if (kind === "todo") return todos.find(t => t.id === id);
+    if (kind === "someday") return somedayItems.find(s => s.id === id);
     return events.find(e => e.id === id);
   }
 
@@ -3600,7 +3679,7 @@
     const pool = itemTagPool(kind);
     // 지금 이 항목에 이미 붙어있는 태그/범주가 어떤 건지 목록에서 바로 보이게(체크 표시 + 배경 강조).
     const item = agendaItemById(kind, id);
-    const currentVal = item ? (kind === "todo" ? (item.tag_id || null) : (item.category_id || null)) : null;
+    const currentVal = item ? ((kind === "todo" || kind === "someday") ? (item.tag_id || null) : (item.category_id || null)) : null;
     const menu = document.createElement("div");
     menu.className = "ctx-menu";
     menu.style.left = x + "px";
@@ -3614,13 +3693,40 @@
         e.stopPropagation();
         menu.remove();
         const val = btn.dataset.tag || null;
-        const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
-        const field = kind === "todo" ? "tag_id" : "category_id";
+        const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : kind === "someday" ? "tok_someday" : "tok_events";
+        const field = (kind === "todo" || kind === "someday") ? "tag_id" : "category_id";
         const { error } = await sb.from(table).update({ [field]: val }).eq("id", id);
         if (error) { alert("변경 실패: " + error.message); return; }
         await loadAll();
       };
     });
+    attachCtxMenuOutsideClose(menu);
+  }
+
+  // 언젠가 항목 전용 오른쪽 클릭 메뉴 — 날짜변경/전환/복제는 해당 없어서(언젠가는 그 자체가 "날짜 없음" 상태) 태그변경·삭제만 제공.
+  function showSomedayItemMenu(x, y, id) {
+    document.querySelector(".ctx-menu")?.remove();
+    const menu = document.createElement("div");
+    menu.className = "ctx-menu";
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+    menu.innerHTML = `
+      <button type="button" class="default" data-act="tag">태그 변경</button>
+      <button type="button" data-act="delete">삭제</button>
+    `;
+    document.body.appendChild(menu);
+    menu.querySelector('[data-act="tag"]').onclick = (e) => {
+      e.stopPropagation(); menu.remove();
+      showItemTagPicker(x, y, "someday", id);
+    };
+    menu.querySelector('[data-act="delete"]').onclick = async (e) => {
+      e.stopPropagation(); menu.remove();
+      const item = somedayItems.find(s => s.id === id);
+      if (!confirm(`"${item?.title || "이 항목"}"을(를) 삭제할까요?`)) return;
+      const { error } = await sb.from("tok_someday").delete().eq("id", id);
+      if (error) { alert("삭제 실패: " + error.message); return; }
+      await loadAll();
+    };
     attachCtxMenuOutsideClose(menu);
   }
 
