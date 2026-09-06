@@ -426,6 +426,8 @@
         <div class="pagehead"><h2>📅 일정</h2></div>
         <div class="inline-add-row">
           <input id="ev_date" type="date" />
+          <span style="align-self:center;color:var(--sub);font-size:12px;">~</span>
+          <input id="ev_end" type="date" title="종료 날짜(선택, 비우면 하루짜리 일정)" />
           <input id="ev_time" type="time" />
           <input id="ev_title" type="text" placeholder="일정 제목" />
           <button id="eventAddBtn">추가</button>
@@ -564,7 +566,7 @@
     <h2 id="idt_title">날짜 변경</h2>
     <div class="field split" id="idt_date_row" style="display:none;">
       <div><label id="idt_date_label">날짜</label><input id="idt_date" type="date" /></div>
-      <div id="idt_end_wrap"><label>종료 날짜(선택)</label><input id="idt_end" type="date" /></div>
+      <div id="idt_end_wrap" style="display:none;"><label>종료 날짜(선택)</label><input id="idt_end" type="date" /></div>
     </div>
     <div class="field"><label>시간(선택)</label><input id="idt_time" type="time" /></div>
     <div class="field split" id="idt_repeat_row" style="display:none;">
@@ -771,7 +773,7 @@
       { data: eventCatData, error: e10 },
     ] = await Promise.all([
       sb.from("tok_habits").select("*").order("start_minute", { nullsFirst: false }).order("created_at"),
-      sb.from("tok_habit_logs").select("habit_id, done_date"),
+      sb.from("tok_habit_logs").select("habit_id, done_date, start_minute, duration_minutes"),
       sb.from("tok_events").select("*").order("event_date").order("event_time"),
       sb.from("tok_someday").select("*").order("created_at"),
       sb.from("tok_time_blocks").select("*").order("sort_order"),
@@ -839,12 +841,18 @@
   async function advancePastRepeatingEvents(eventList) {
     const today = todayStr();
     for (const e of eventList) {
-      if (!e.repeat_unit || e.event_date >= today) continue;
+      if (!e.repeat_unit) continue;
+      // 기간(여러 날) 일정이면 시작~종료 간격(spanDays)을 유지한 채로 다음 회차를 계산(할일 반복과 동일 방식).
+      const spanDays = e.end_date && e.end_date !== e.event_date
+        ? Math.round((new Date(e.end_date + "T00:00:00") - new Date(e.event_date + "T00:00:00")) / 86400000)
+        : 0;
+      if (addDaysStr(e.event_date, spanDays) >= today) continue; // 아직 기간 중이거나 미래면 그대로 둠
       let next = e.event_date, guard = 0;
-      while (next < today && guard < 1000) { next = nextRepeatDateStr(next, e.repeat_unit, e.repeat_interval); guard++; }
+      while (addDaysStr(next, spanDays) < today && guard < 1000) { next = nextRepeatDateStr(next, e.repeat_unit, e.repeat_interval); guard++; }
       if (next !== e.event_date) {
-        const { error } = await sb.from("tok_events").update({ event_date: next }).eq("id", e.id);
-        if (!error) e.event_date = next;
+        const nextEnd = spanDays ? addDaysStr(next, spanDays) : null;
+        const { error } = await sb.from("tok_events").update({ event_date: next, end_date: nextEnd }).eq("id", e.id);
+        if (!error) { e.event_date = next; e.end_date = nextEnd; }
       }
     }
   }
@@ -1185,9 +1193,12 @@
   // 습관 체크를 "오늘"이 아닌 다른 날짜(과거·미래)에도 할 수 있게 일반화한 버전.
   async function toggleHabitForDate(taskId, checked, dateStr) {
     if (checked) {
-      const { error } = await sb.from("tok_habit_logs").insert({ habit_id: taskId, done_date: dateStr });
+      // 체크하는 순간의 습관 시간을 그대로 기록에 남김(나중에 습관 시간을 바꿔도 이미 완료한 날짜엔 영향 없게).
+      const t = tasks.find(x => x.id === taskId);
+      const snap = { start_minute: t?.start_minute ?? null, duration_minutes: t?.duration_minutes ?? null };
+      const { error } = await sb.from("tok_habit_logs").insert({ habit_id: taskId, done_date: dateStr, ...snap });
       if (error) { alert("체크 실패: " + error.message); return; }
-      habitLogs.push({ habit_id: taskId, done_date: dateStr });
+      habitLogs.push({ habit_id: taskId, done_date: dateStr, ...snap });
     } else {
       const { error } = await sb.from("tok_habit_logs").delete().eq("habit_id", taskId).eq("done_date", dateStr);
       if (error) { alert("체크 해제 실패: " + error.message); return; }
@@ -1232,7 +1243,7 @@
     const dateStr = homeAgendaDate;
     $("agendaDateLabel").textContent = formatDate(dateStr);
     const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr && !td.todo_time);
-    const dayUntimedEvents = events.filter(e => e.event_date === dateStr && !e.event_time);
+    const dayUntimedEvents = events.filter(e => e.event_date <= dateStr && (e.end_date || e.event_date) >= dateStr && !e.event_time);
     const doneSetAll = await fetchLogsForDate(dateStr);
     const untimedHabits = tasks.filter(t => t.is_active && t.start_minute == null && isHabitDueOnDate(t, dateStr, doneSetAll.has(t.id)));
     const doneSet = doneSetAll;
@@ -1356,9 +1367,10 @@
       }
     } else if (kind === "event") {
       if (zone === "someday") return; // 일정은 고정 스케줄 개념이라 언젠가로는 전환하지 않음
-      const patch = zone === "planday" ? { event_date: zoneObj.date }
-        : zone === "today-allday" ? { event_date: todayStr(), event_time: null }
-        : { event_date: todayStr(), event_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
+      // 어디로 옮기든 특정 하루/시간으로 콕 집어 놓는 동작이라, 기간(여러 날) 일정이었다면 하루짜리로 되돌림(할일 이동과 동일 규칙).
+      const patch = zone === "planday" ? { event_date: zoneObj.date, end_date: null }
+        : zone === "today-allday" ? { event_date: todayStr(), end_date: null, event_time: null }
+        : { event_date: todayStr(), end_date: null, event_time: minutesToHHMM(zoneObj.startMinute) + ":00" };
       const { error } = await sb.from("tok_events").update(patch).eq("id", id);
       if (error) { alert("이동 실패: " + error.message); return; }
     } else if (kind === "todo") {
@@ -1447,12 +1459,19 @@
   async function timedItemsForDate(dateStr) {
     const doneSet = await fetchLogsForDate(dateStr);
     const active = tasks.filter(t => t.is_active && t.start_minute != null && isHabitDueOnDate(t, dateStr, doneSet.has(t.id)));
-    const habitItems = active.map(t => ({
-      kind: "habit", id: t.id, name: t.name,
-      start_minute: t.start_minute, duration_minutes: t.duration_minutes || 30,
-      done: doneSet.has(t.id), cat_id: t.category_id,
-    }));
-    const dayEvents = events.filter(e => e.event_date === dateStr && e.event_time);
+    const habitItems = active.map(t => {
+      // 이미 완료된 날짜는 그때 남겨둔 시간 스냅샷을 그대로 씀(습관 시간을 나중에 바꿔도 지난 완료 기록엔 영향 없게).
+      // 아직 체크 안 한 날짜(오늘 미완료·미래)는 스냅샷이 없으니 지금 습관에 설정된 시간을 그대로 보여줌.
+      const log = habitLogs.find(r => r.habit_id === t.id && r.done_date === dateStr);
+      const start_minute = log?.start_minute ?? t.start_minute;
+      const duration_minutes = log?.duration_minutes ?? t.duration_minutes ?? 30;
+      return {
+        kind: "habit", id: t.id, name: t.name,
+        start_minute, duration_minutes,
+        done: doneSet.has(t.id), cat_id: t.category_id,
+      };
+    });
+    const dayEvents = events.filter(e => e.event_date <= dateStr && (e.end_date || e.event_date) >= dateStr && e.event_time);
     const eventItems = dayEvents.map(e => ({
       kind: "event", id: e.id, name: e.title,
       start_minute: hhmmToMinutes(e.event_time), duration_minutes: 30, done: false, cat_id: e.category_id,
@@ -2066,7 +2085,7 @@
 
     $("planUpcomingBoard").innerHTML = days.map((dateStr, idx) => {
       const dayTodos = todos.filter(td => td.start_date <= dateStr && (td.end_date || td.start_date) >= dateStr);
-      const dayEvents = events.filter(e => e.event_date === dateStr).sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
+      const dayEvents = events.filter(e => e.event_date <= dateStr && (e.end_date || e.event_date) >= dateStr).sort((a, b) => (a.event_time || "").localeCompare(b.event_time || ""));
       const doneSet = logsByDate[dateStr];
       const dayHabits = active.filter(t => !t.repeat_unit || habitNextDate.get(t.id) === dateStr);
 
@@ -2075,11 +2094,13 @@
           <input type="checkbox" ${doneSet.has(t.id) ? "checked" : ""} data-id="${t.id}" data-date="${dateStr}" class="planup-habit-check" />
           <span class="plan-todo-title">${escapeHtml(t.name)}</span>
         </div>`).join("");
-      const eventHtml = dayEvents.map(e => `
-        <div class="plan-row planup-drag-row" data-id="${e.id}" data-kind="event">
+      const eventHtml = dayEvents.map(e => {
+        const isRange = e.end_date && e.end_date !== e.event_date;
+        return `<div class="plan-row ${isRange ? "" : "planup-drag-row"}" data-id="${e.id}" data-kind="event">
           <span class="plan-todo-title">${escapeHtml(e.title)}</span>
-          ${e.event_time ? `<span class="plan-time">${e.event_time.slice(0, 5)}</span>` : ""}
-        </div>`).join("");
+          ${isRange ? `<span class="plan-range-tag">~${formatDateShort(e.end_date)}</span>` : e.event_time ? `<span class="plan-time">${e.event_time.slice(0, 5)}</span>` : ""}
+        </div>`;
+      }).join("");
       const todoHtml = dayTodos.map(td => {
         const isRange = td.end_date && td.end_date !== td.start_date;
         return `<div class="plan-row todo ${isRange ? "" : "planup-drag-row"}" data-id="${td.id}" data-kind="todo">
@@ -2716,21 +2737,30 @@
   function renderSchedule() {
     $("scheduleEmpty").style.display = events.length ? "none" : "block";
     const groups = {};
-    events.forEach(e => { (groups[e.event_date] ||= []).push(e); });
+    // 기간(여러 날) 일정은 시작~종료 사이 모든 날짜의 그룹에 다 들어가게 함(다가오는 계획/집 화면과 동일한 규칙).
+    events.forEach(e => {
+      const last = e.end_date && e.end_date > e.event_date ? e.end_date : e.event_date;
+      let d = e.event_date, guard = 0;
+      while (d <= last && guard < 366) { (groups[d] ||= []).push(e); d = addDaysStr(d, 1); guard++; }
+    });
     const dates = Object.keys(groups).sort();
     $("scheduleList").innerHTML = dates.map(d => `
       <div class="day-group">
         <div class="day-label">${formatDate(d)}</div>
         <div class="card">
-          ${groups[d].map(e => `
+          ${groups[d].map(e => {
+            const isRange = e.end_date && e.end_date !== e.event_date;
+            return `
             <div class="event-row" data-id="${e.id}">
               <div class="t">${e.event_time ? e.event_time.slice(0,5) : ""}</div>
               <div class="body">
                 <div class="title">${escapeHtml(e.title)}</div>
                 ${e.memo ? `<div class="memo">${escapeHtml(e.memo)}</div>` : ""}
               </div>
+              ${isRange ? `<span class="plan-range-tag">~${formatDateShort(e.end_date)}</span>` : ""}
               <button class="del" data-id="${e.id}">삭제</button>
-            </div>`).join("")}
+            </div>`;
+          }).join("")}
         </div>
       </div>
     `).join("");
@@ -2896,12 +2926,15 @@
   $("eventAddBtn").onclick = async () => {
     const title = $("ev_title").value.trim();
     const event_date = $("ev_date").value;
+    const end_date = $("ev_end").value || null;
     if (!title || !event_date) { alert("날짜와 제목은 꼭 입력해주세요."); return; }
+    if (end_date && end_date < event_date) { alert("종료 날짜는 시작 날짜보다 빠를 수 없어요."); return; }
     const { error } = await sb.from("tok_events").insert({
-      event_date, event_time: $("ev_time").value || null, title, memo: null,
+      event_date, end_date, event_time: $("ev_time").value || null, title, memo: null,
     });
     if (error) { alert("저장 실패: " + error.message); return; }
     $("ev_title").value = "";
+    $("ev_end").value = "";
     await loadAll();
     $("ev_title").focus();
   };
@@ -3094,9 +3127,9 @@
     bg.dataset.editId = id;
     $("idt_title").textContent = (kind === "habit" ? "습관" : kind === "todo" ? "할일" : "일정") + " 날짜/시간 변경";
     $("idt_date_row").style.display = (kind === "todo" || kind === "event") ? "flex" : "none";
-    $("idt_end_wrap").style.display = kind === "todo" ? "block" : "none";
+    $("idt_end_wrap").style.display = (kind === "todo" || kind === "event") ? "block" : "none";
     $("idt_repeat_row").style.display = "flex"; // 이제 습관·할일·일정 전부 반복 설정 가능
-    $("idt_date_label").textContent = kind === "todo" ? "시작 날짜" : "날짜";
+    $("idt_date_label").textContent = (kind === "todo" || kind === "event") ? "시작 날짜" : "날짜";
     $("idt_date").value = "";
     $("idt_end").value = "";
     $("idt_time").value = "";
@@ -3108,6 +3141,7 @@
       $("idt_time").value = item.todo_time ? item.todo_time.slice(0, 5) : "";
     } else if (kind === "event") {
       $("idt_date").value = item.event_date || "";
+      $("idt_end").value = item.end_date || "";
       $("idt_time").value = item.event_time ? item.event_time.slice(0, 5) : "";
     } else {
       $("idt_time").value = item.start_minute != null ? minutesToHHMM(item.start_minute) : "";
@@ -3130,7 +3164,9 @@
     } else if (kind === "event") {
       const dateVal = $("idt_date").value;
       if (!dateVal) { alert("날짜를 입력해주세요."); return; }
-      patch = { event_date: dateVal, event_time: timeVal ? timeVal + ":00" : null, repeat_unit, repeat_interval };
+      const endVal = $("idt_end").value || null;
+      if (endVal && endVal < dateVal) { alert("종료 날짜는 시작 날짜보다 빠를 수 없어요."); return; }
+      patch = { event_date: dateVal, end_date: endVal, event_time: timeVal ? timeVal + ":00" : null, repeat_unit, repeat_interval };
     } else {
       if (!timeVal) { alert("시간을 입력해주세요."); return; }
       patch = { start_minute: hhmmToMinutes(timeVal), repeat_unit, repeat_interval };
