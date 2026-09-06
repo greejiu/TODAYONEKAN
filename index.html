@@ -126,7 +126,7 @@
 
   /* ── 집 : 언젠가 할일 ── */
   .someday-add-row{display:flex;gap:6px;margin-bottom:8px;}
-  .someday-add-row input{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:12px;font-size:13px;}
+  .someday-add-row input{flex:1;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:12px;font-size:13px;}
   .someday-add-row button{padding:0 14px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;}
   .someday-row{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:13px;}
   .someday-row:last-child{border-bottom:none;}
@@ -141,7 +141,7 @@
   .inline-add-row input[type=date],.inline-add-row input[type=time]{flex:0 0 auto;}
   .inline-add-row input[type=number]{width:64px;flex:0 0 auto;}
   .inline-add-row button{padding:0 14px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;flex-shrink:0;}
-  .inline-add-input{width:100%;padding:5px 7px;border:1px solid var(--accent);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;}
+  .inline-add-input{width:100%;padding:5px 7px;border:1px solid var(--accent);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;min-width:0;}
   .tl-inline-add{padding:0 4px;}
   .tl-inline-add .inline-add-input{padding:2px 6px;font-size:12px;}
   /* 인라인 추가 입력창 옆 날짜/반복 아이콘(2026-09-06 결님 요청) — 입력 중에 바로 날짜·반복을 지정할 수 있게 함. */
@@ -2278,7 +2278,7 @@
   // 팝업 없이 타임라인 그 자리에 바로 입력창을 띄워 할일을 추가함(Enter/바깥 클릭 시 저장, Esc면 취소)
   function showAgendaTimelineInlineAdd(content, loSlot, hiSlot, startMinute, durationMinutes) {
     const el = document.createElement("div");
-    el.className = "ag-tl-task tl-inline-add";
+    el.className = "ag-tl-task tl-inline-add inline-add-wrap";
     el.style.top = `${loSlot * AG_TL_ROW_PX}px`;
     el.style.height = `${(hiSlot - loSlot + 1) * AG_TL_ROW_PX}px`;
     el.style.left = "0"; el.style.width = "calc(100% - 4px)";
