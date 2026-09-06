@@ -3502,6 +3502,18 @@
 
   function escapeHtml(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+  // 우클릭 메뉴(.ctx-menu) 공통 위치보정 — 화면 아래/오른쪽 끝 근처에서 열면 메뉴가 잘려서 아래쪽 항목을
+  // 클릭할 수 없던 문제(결님 제보) 수정: DOM에 붙인 뒤 실제 크기를 재서, 뷰포트를 넘치면 커서 반대쪽으로 뒤집음.
+  function positionCtxMenu(menu, x, y) {
+    const pad = 6;
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let left = x, top = y;
+    if (left + mw + pad > window.innerWidth) left = Math.max(pad, x - mw);
+    if (top + mh + pad > window.innerHeight) top = Math.max(pad, y - mh);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
   // 오른쪽 클릭(→ PC 관리 메뉴) 공통 헬퍼: 커서 위치에 "삭제" 한 줄짜리 메뉴를 띄움
   function showDeleteMenu(x, y, onDelete) {
     document.querySelector(".ctx-menu")?.remove();
@@ -3511,6 +3523,7 @@
     menu.style.top = y + "px";
     menu.innerHTML = `<button type="button">삭제</button>`;
     document.body.appendChild(menu);
+    positionCtxMenu(menu, x, y);
     menu.querySelector("button").onclick = async (e) => {
       e.stopPropagation();
       menu.remove();
@@ -3570,6 +3583,7 @@
       <button type="button" data-act="delete">삭제</button>
     `;
     document.body.appendChild(menu);
+    positionCtxMenu(menu, x, y);
     menu.querySelector('[data-act="date"]').onclick = (e) => {
       e.stopPropagation(); menu.remove();
       openItemDateSheet(kind, id);
@@ -3688,6 +3702,7 @@
     const items = pool.map(c => `<button type="button" class="default${c.id === currentVal ? " selected" : ""}" data-tag="${c.id}"><span class="ctx-tag-dot" style="background:${c.color || "var(--accent)"};"></span>${escapeHtml(c.name)}${c.id === currentVal ? " ✓" : ""}</button>`).join("");
     menu.innerHTML = noneBtn + items;
     document.body.appendChild(menu);
+    positionCtxMenu(menu, x, y);
     menu.querySelectorAll("button[data-tag]").forEach(btn => {
       btn.onclick = async (e) => {
         e.stopPropagation();
@@ -3715,6 +3730,7 @@
       <button type="button" data-act="delete">삭제</button>
     `;
     document.body.appendChild(menu);
+    positionCtxMenu(menu, x, y);
     menu.querySelector('[data-act="tag"]').onclick = (e) => {
       e.stopPropagation(); menu.remove();
       showItemTagPicker(x, y, "someday", id);
