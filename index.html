@@ -103,6 +103,7 @@
   .ag-block-row.done .agenda-title,.ag-allday-row.done .agenda-title{color:var(--sub);text-decoration:line-through;}
   .agenda-empty-block{padding:14px;border-radius:14px;border:1px dashed var(--line);color:var(--sub);font-size:12px;text-align:center;}
   /* 체크박스와 같은 네모 모양·크기·간격으로 통일(할일/습관은 체크박스로 토글, 일정은 늘 범주색으로 차 있는 네모). */
+  .agenda-event-dot-wrap{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
   .agenda-event-dot{border-radius:50%;flex-shrink:0;display:inline-block;vertical-align:middle;}
 
   /* ── 집 : 타임라인 보기(15분 그리드, 습관은 시작시각·소요시간에 맞춰 배치) ── */
@@ -1425,10 +1426,11 @@
     const cat = itemTagPool(kind).find(c => c.id === catId);
     return cat ? (cat.color || null) : null;
   }
-  // 일정 항목 옆에 붙이는 범주색 네모("일정"이라는 글자 배지 대신) — 체크박스와 모양·크기·간격을 통일하고, 항상 색이 찬 상태로 구분(할일/습관은 체크 전엔 빈 네모, 체크하면 체크표시+줄긋기).
-  // size: 이 네모가 들어갈 자리의 체크박스 크기에 맞춰 호출부에서 지정(하루종일·타임블럭=20, 타임라인=14).
-  function eventDotHtml(catId, size = 10) {
-    return `<span class="agenda-event-dot" style="width:${size}px;height:${size}px;background:${itemTagColor("event", catId) || "#c9457a"};"></span>`;
+  // 일정 항목 옆에 붙이는 범주색 동그라미("일정"이라는 글자 배지 대신) — 항상 색이 찬 상태로 구분(할일/습관은 체크 전엔 빈 체크박스, 체크하면 체크표시+줄긋기).
+  // 동그라미 자체는 작게(size) 그리되, 옆 체크박스와 같은 너비(boxSize)의 자리 한가운데 놓아서 뒤따르는 글자 시작 위치가 체크박스가 있는 목록과 정확히 맞도록 함.
+  // boxSize: 이 자리가 들어갈 줄의 체크박스 크기에 맞춰 호출부에서 지정(하루종일·타임블럭=20, 타임라인=14).
+  function eventDotHtml(catId, size = 10, boxSize = 20) {
+    return `<span class="agenda-event-dot-wrap" style="width:${boxSize}px;height:${boxSize}px;"><span class="agenda-event-dot" style="width:${size}px;height:${size}px;background:${itemTagColor("event", catId) || "#c9457a"};"></span></span>`;
   }
   // 태그/범주 색을 카드 배경으로 옅게 깔아줌(원색 그대로면 글자가 안 보여서 흰색과 섞어 파스텔톤으로), 태그 없으면 흰 배경 고정
   function itemTagBgStyle(kind, catId) {
@@ -2061,7 +2063,7 @@
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" data-date="${homeAgendaDate}" class="ag-habit-check" />`
           : it.kind === "todo"
           ? `<input type="checkbox" ${it.done ? "checked" : ""} data-id="${it.id}" class="ag-todo-check" />`
-          : eventDotHtml(it.cat_id, 8)}
+          : eventDotHtml(it.cat_id, 8, 14)}
         <span class="ag-tl-title">${escapeHtml(it.name)}</span>
       </div>`;
     });
