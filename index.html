@@ -156,19 +156,8 @@
   .inline-add-input{width:100%;padding:5px 7px;border:1px solid var(--accent);border-radius:6px;font-size:13px;font-family:inherit;background:#fff;min-width:0;}
   .tl-inline-add{padding:0 4px;}
   .tl-inline-add .inline-add-input{padding:2px 6px;font-size:12px;}
-  /* 인라인 추가 입력창 옆 날짜/반복 아이콘(2026-09-06 결님 요청) — 입력 중에 바로 날짜·반복을 지정할 수 있게 함. */
   .inline-add-wrap{display:flex;align-items:center;gap:4px;}
   .inline-add-wrap .inline-add-input{width:auto;flex:1;min-width:0;}
-  .qa-icons{display:flex;gap:2px;flex-shrink:0;}
-  .qa-icon{width:24px;height:24px;padding:0;border:none;background:transparent;border-radius:6px;line-height:1;cursor:pointer;color:var(--sub);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .qa-icon svg{display:block;pointer-events:none;}
-  .qa-icon:hover{background:var(--accent-soft);}
-  .qa-icon.active{background:var(--accent-soft);color:var(--accent);}
-  .tl-inline-add .qa-icon{width:18px;height:18px;}
-  .tl-inline-add .qa-icon svg{width:11px;height:11px;}
-  .qa-popover{position:fixed;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:8px;display:flex;gap:6px;align-items:center;}
-  .qa-popover select,.qa-popover input{font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-family:inherit;}
-  .qa-popover input[type=number]{width:48px;}
 
   /* ── 클릭=수정, 오른쪽클릭=삭제 메뉴 ── */
   .todo-row .name, .event-row .title, .someday-title, .plan-row.todo .plan-todo-title{cursor:pointer;}
@@ -1466,115 +1455,6 @@
   // 다가오는 계획 각 날짜 점 색상(장식용, 항목 있는 날만 색이 돌아가며 붙고 빈 날은 회색)
   const PLAN_DAY_DOTS = ["#4a90e2", "#f5a742", "#a56cf0", "#3fae6a", "#e2678a"];
 
-  // 날짜/반복 아이콘의 선(line) 스타일 SVG — 이모지 대신 깔끔한 아웃라인 아이콘으로(2026-09-06 결님 요청).
-  const QA_DATE_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>`;
-  const QA_REPEAT_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
-
-  // 인라인 추가/수정 입력창 옆에 날짜·반복 아이콘을 붙여줌(2026-09-06 결님 요청) — 새로 추가할 때뿐 아니라
-  // 기존 항목 이름을 인라인 수정할 때도 똑같이 붙어서, 그 자리에서 날짜·반복을 같이 바꿀 수 있게 함.
-  // wrap: 아이콘을 붙일 flex 컨테이너(안에 input이 있어야 함). defaultDate: 날짜 팝오버 초기값(새 항목 기본 날짜, 또는 기존 항목의 현재 날짜).
-  // insertBeforeEl: 지정하면 그 앞에 아이콘을 끼워넣음(예: 이미 "추가" 버튼이 있는 줄), 없으면 맨 뒤에 붙임.
-  // initial: 기존 항목 수정일 때 현재 값을 미리 채워줌({date?, repeat_unit?, repeat_interval?}) — 새로 추가할 땐 생략(전부 빈 상태로 시작).
-  // onPopoverDismiss: 팝오버를 바깥 클릭으로 닫을 때 호출됨(아이콘으로 값을 다 고르고 나서 저장을 트리거하는 용도) — 생략 가능.
-  // 반환값 getPatch()로 사용자가 고른 값을 읽어서 insert/update 시 합치면 됨({start_date?, repeat_unit?, repeat_interval?}).
-  // repeat_unit은 사용자가 팝오버를 한 번이라도 건드리면(반복없음으로 되돌려도) 항상 포함돼서, 기존 반복을 지우는 것도 가능함.
-  //
-  // ⚠️ 아이콘을 누르면 입력창이 포커스를 잃으면서(blur) 팝오버가 뜨기도 전에 그 자리의 commit()이 먼저 실행돼버려
-  // "팝오버 없이 그냥 저장됨"처럼 보이는 문제가 있었음(2026-09-06 결님 제보) — 아이콘 버튼은 mousedown에서
-  // preventDefault로 포커스 이동 자체를 막아 해결. 팝오버 안의 실제 입력(날짜/반복 select 등)은 포커스가 필요해서
-  // 막을 수 없으니, 그 경우엔 호출부의 blur 핸들러가 "팝오버가 열려있으면 아직 저장하지 않음"을 직접 체크해야 함
-  // (각 호출부의 blur 핸들러에 `if (document.querySelector(".qa-popover")) return;`를 추가해둠).
-  function attachQuickAddIcons(wrap, defaultDate, insertBeforeEl, initial = {}, onPopoverDismiss) {
-    const state = {
-      date: initial.date || null,
-      repeat_unit: initial.repeat_unit || null,
-      repeat_interval: initial.repeat_interval || 1,
-      repeatTouched: false,
-    };
-    const iconsEl = document.createElement("span");
-    iconsEl.className = "qa-icons";
-    iconsEl.innerHTML = `
-      <button type="button" class="qa-icon qa-date-btn" title="날짜 지정">${QA_DATE_SVG}</button>
-      <button type="button" class="qa-icon qa-repeat-btn" title="반복 설정">${QA_REPEAT_SVG}</button>`;
-    if (insertBeforeEl) wrap.insertBefore(iconsEl, insertBeforeEl); else wrap.appendChild(iconsEl);
-    const dateBtn = iconsEl.querySelector(".qa-date-btn");
-    const repeatBtn = iconsEl.querySelector(".qa-repeat-btn");
-    dateBtn.classList.toggle("active", !!state.date && state.date !== defaultDate);
-    repeatBtn.classList.toggle("active", !!state.repeat_unit);
-    // 아이콘 자체를 누를 땐 옆 입력창이 blur되지 않게(그래서 blur에 걸려있는 commit()이 먼저 실행돼버리지 않게) 막음.
-    dateBtn.addEventListener("mousedown", (e) => e.preventDefault());
-    repeatBtn.addEventListener("mousedown", (e) => e.preventDefault());
-
-    const closePopover = () => { document.querySelector(".qa-popover")?.remove(); };
-    const openPopover = (anchorBtn, innerHtml, onOpen) => {
-      closePopover();
-      const pop = document.createElement("div");
-      pop.className = "qa-popover";
-      pop.innerHTML = innerHtml;
-      document.body.appendChild(pop);
-      const r = anchorBtn.getBoundingClientRect();
-      pop.style.top = `${r.bottom + 4}px`;
-      pop.style.left = `${Math.min(r.left, window.innerWidth - 190)}px`;
-      onOpen?.(pop);
-      setTimeout(() => {
-        const outside = (e) => {
-          if (pop.contains(e.target) || e.target === anchorBtn) return;
-          pop.remove();
-          document.removeEventListener("pointerdown", outside, true);
-          onPopoverDismiss?.(); // 팝오버가 진짜로 닫혔으니, 그동안 미뤄뒀던 저장을 여기서 마저 진행함.
-        };
-        document.addEventListener("pointerdown", outside, true);
-      }, 0);
-    };
-
-    dateBtn.onclick = (e) => {
-      e.stopPropagation(); e.preventDefault();
-      openPopover(dateBtn, `<input type="date" class="qa-date-input" value="${state.date || defaultDate}" />`, (pop) => {
-        const dInput = pop.querySelector("input");
-        dInput.focus();
-        dInput.onchange = () => {
-          state.date = dInput.value || null;
-          dateBtn.classList.toggle("active", !!state.date && state.date !== defaultDate);
-        };
-      });
-    };
-    repeatBtn.onclick = (e) => {
-      e.stopPropagation(); e.preventDefault();
-      openPopover(repeatBtn, `
-        <select class="qa-repeat-unit">
-          <option value="">반복 없음</option>
-          <option value="day">일마다</option>
-          <option value="week">주마다</option>
-          <option value="month">개월마다</option>
-        </select>
-        <input type="number" min="1" class="qa-repeat-interval" value="${state.repeat_interval}" />`, (pop) => {
-        const unitSel = pop.querySelector(".qa-repeat-unit");
-        const intInput = pop.querySelector(".qa-repeat-interval");
-        unitSel.value = state.repeat_unit || "";
-        unitSel.onchange = () => {
-          state.repeat_unit = unitSel.value || null;
-          state.repeatTouched = true;
-          repeatBtn.classList.toggle("active", !!state.repeat_unit);
-        };
-        intInput.onchange = () => { state.repeat_interval = parseInt(intInput.value, 10) || 1; state.repeatTouched = true; };
-      });
-    };
-
-    return {
-      getPatch() {
-        const patch = {};
-        if (state.date) patch.start_date = state.date;
-        if (state.repeatTouched || state.repeat_unit) {
-          patch.repeat_unit = state.repeat_unit || null;
-          patch.repeat_interval = state.repeat_unit ? state.repeat_interval : null;
-        }
-        return patch;
-      },
-      isPopoverOpen: () => !!document.querySelector(".qa-popover"),
-      close: closePopover,
-    };
-  }
-
   // "하루종일": 그 날짜에 걸친 할일(시간 없음) + 시간 없는 일정 + 시간 없는 습관
   async function renderAgendaAllDay() {
     const dateStr = homeAgendaDate;
@@ -1637,19 +1517,15 @@
       wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
       row.replaceWith(wrap);
       const input = wrap.querySelector("input");
-      const qa = attachQuickAddIcons(wrap, homeAgendaDate, undefined, undefined, () => commit(false));
       input.focus();
       let done = false;
       const commit = async (reopen) => {
         if (done) return;
         const name = input.value.trim();
-        if (!name) { done = true; qa.close(); renderAgendaAllDay(); return; }
+        if (!name) { done = true; renderAgendaAllDay(); return; }
         done = true;
-        qa.close();
-        const patch = qa.getPatch();
         const { error } = await sb.from("tok_todos").insert({
-          title: name, start_date: patch.start_date || homeAgendaDate, todo_time: null,
-          repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
+          title: name, start_date: homeAgendaDate, todo_time: null,
         });
         if (error) { alert("저장 실패: " + error.message); done = false; return; }
         await loadAll();
@@ -1659,8 +1535,7 @@
         if (e.key === "Enter") { e.preventDefault(); commit(true); }
         else if (e.key === "Escape") { done = true; renderAgendaAllDay(); }
       });
-      // 아이콘 팝오버가 열려있는 동안의 blur는 무시(팝오버를 실제로 닫을 때 onPopoverDismiss가 저장을 마저 진행함).
-      input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(false); });
+      input.addEventListener("blur", () => commit(false));
     };
     row.onclick = openInput;
     if (autoOpen) openInput();
@@ -1897,20 +1772,16 @@
         wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
         row.replaceWith(wrap);
         const input = wrap.querySelector("input");
-        const qa = attachQuickAddIcons(wrap, homeAgendaDate, undefined, undefined, () => commit(false));
         input.focus();
         let done = false;
         const commit = async (reopen) => {
           if (done) return;
           const name = input.value.trim();
-          if (!name) { done = true; qa.close(); renderAgendaTimed(); return; }
+          if (!name) { done = true; renderAgendaTimed(); return; }
           done = true;
-          qa.close();
-          const patch = qa.getPatch();
           const { error } = await sb.from("tok_todos").insert({
-            title: name, start_date: patch.start_date || homeAgendaDate,
+            title: name, start_date: homeAgendaDate,
             todo_time: minutesToHHMM(startMinute) + ":00", duration_minutes: 30,
-            repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
           });
           if (error) { alert("저장 실패: " + error.message); done = false; return; }
           await loadAll();
@@ -1920,7 +1791,7 @@
           if (e.key === "Enter") { e.preventDefault(); commit(true); }
           else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
         });
-        input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(false); });
+        input.addEventListener("blur", () => commit(false));
       };
       row.onclick = openInput;
       if (autoOpenStart === startMinute) openInput();
@@ -1940,53 +1811,25 @@
     titleEl.replaceWith(wrap);
     const input = wrap.querySelector("input");
     input.value = current;
-    // 종류별로 현재 날짜·반복 값을 찾아서 아이콘에 미리 채워줌(언젠가는 날짜 개념이 없어 오늘 기준으로 표시).
-    const item = kind === "habit" ? tasks.find(t => t.id === id)
-      : kind === "todo" ? todos.find(t => t.id === id)
-      : kind === "event" ? events.find(e => e.id === id)
-      : somedayItems.find(s => s.id === id);
-    const curDate = kind === "event" ? item?.event_date : item?.start_date;
-    const qa = attachQuickAddIcons(wrap, curDate || todayStr(), null,
-      item && kind !== "someday" ? { date: curDate, repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval } : {},
-      () => commit());
     input.focus(); input.select();
     let done = false;
     const commit = async () => {
       if (done) return;
       const name = input.value.trim();
-      const patch = qa.getPatch();
       const nameChanged = name && name !== current;
-      if (!nameChanged && !Object.keys(patch).length) { qa.close(); onDone(); return; }
+      if (!nameChanged) { onDone(); return; }
       done = true;
-      qa.close();
-      if (kind === "someday" && (patch.start_date || patch.repeat_unit)) {
-        // 언젠가에 날짜·반복을 지정하면 할일로 전환(추가할 때와 동일한 규칙)
-        const { error: insErr } = await sb.from("tok_todos").insert({
-          title: nameChanged ? name : current, start_date: patch.start_date || todayStr(),
-          repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
-        });
-        if (insErr) { alert("수정 실패: " + insErr.message); done = false; return; }
-        const { error: delErr } = await sb.from("tok_someday").delete().eq("id", id);
-        if (delErr) { alert("수정 실패: " + delErr.message); done = false; return; }
-        await loadAll();
-        return;
-      }
       const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : kind === "someday" ? "tok_someday" : "tok_events";
       const field = kind === "habit" ? "name" : "title";
-      const updatePatch = {};
-      if (nameChanged) updatePatch[field] = name;
-      if (patch.start_date) { if (kind === "event") updatePatch.event_date = patch.start_date; else updatePatch.start_date = patch.start_date; }
-      if ("repeat_unit" in patch) { updatePatch.repeat_unit = patch.repeat_unit; updatePatch.repeat_interval = patch.repeat_interval; }
-      if (!Object.keys(updatePatch).length) { onDone(); return; }
-      const { error } = await sb.from(table).update(updatePatch).eq("id", id);
+      const { error } = await sb.from(table).update({ [field]: name }).eq("id", id);
       if (error) { alert("수정 실패: " + error.message); done = false; return; }
       await loadAll();
     };
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); commit(); }
-      else if (e.key === "Escape") { done = true; qa.close(); onDone(); }
+      else if (e.key === "Escape") { done = true; onDone(); }
     });
-    input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(); });
+    input.addEventListener("blur", () => commit());
   }
 
   // 오늘 열 타임블럭(카드형) 보기: 습관·일정 행을 다른 블럭 카드 위로 드래그하면
@@ -2189,37 +2032,25 @@
         titleEl.replaceWith(wrap);
         const input = wrap.querySelector("input");
         input.value = current;
-        const item = kind === "habit" ? tasks.find(t => t.id === id) : kind === "todo" ? todos.find(t => t.id === id) : events.find(e => e.id === id);
-        const curDate = kind === "event" ? item?.event_date : item?.start_date;
-        const qa = attachQuickAddIcons(wrap, curDate || todayStr(), null,
-          item ? { date: curDate, repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval } : {},
-          () => commit());
         input.focus(); input.select();
         let done = false;
         const commit = async () => {
           if (done) return;
           const name = input.value.trim();
-          const patch = qa.getPatch();
           const nameChanged = name && name !== current;
-          if (!nameChanged && !Object.keys(patch).length) { qa.close(); renderAgendaTimed(); return; }
+          if (!nameChanged) { renderAgendaTimed(); return; }
           done = true;
-          qa.close();
           const table = kind === "habit" ? "tok_habits" : kind === "todo" ? "tok_todos" : "tok_events";
           const field = kind === "habit" ? "name" : "title";
-          const updatePatch = {};
-          if (nameChanged) updatePatch[field] = name;
-          if (patch.start_date) { if (kind === "event") updatePatch.event_date = patch.start_date; else updatePatch.start_date = patch.start_date; }
-          if ("repeat_unit" in patch) { updatePatch.repeat_unit = patch.repeat_unit; updatePatch.repeat_interval = patch.repeat_interval; }
-          if (!Object.keys(updatePatch).length) { renderAgendaTimed(); return; }
-          const { error } = await sb.from(table).update(updatePatch).eq("id", id);
+          const { error } = await sb.from(table).update({ [field]: name }).eq("id", id);
           if (error) { alert("수정 실패: " + error.message); done = false; return; }
           await loadAll();
         };
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { done = true; qa.close(); renderAgendaTimed(); }
+          else if (e.key === "Escape") { done = true; renderAgendaTimed(); }
         });
-        input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(); });
+        input.addEventListener("blur", () => commit());
       };
 
       task.addEventListener("pointerdown", (e) => {
@@ -2415,20 +2246,16 @@
     el.innerHTML = `<input type="text" class="inline-add-input" placeholder="할일 이름" />`;
     content.appendChild(el);
     const input = el.querySelector("input");
-    const qa = attachQuickAddIcons(el, homeAgendaDate, undefined, undefined, () => commit());
     input.focus();
     let done = false;
     const commit = async () => {
       if (done) return;
       const name = input.value.trim();
-      if (!name) { qa.close(); el.remove(); return; }
+      if (!name) { el.remove(); return; }
       done = true;
-      qa.close();
-      const patch = qa.getPatch();
       const { error } = await sb.from("tok_todos").insert({
-        title: name, start_date: patch.start_date || homeAgendaDate,
+        title: name, start_date: homeAgendaDate,
         todo_time: minutesToHHMM(startMinute) + ":00", duration_minutes: durationMinutes,
-        repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
       });
       if (error) { alert("저장 실패: " + error.message); done = false; return; }
       await loadAll();
@@ -2437,7 +2264,7 @@
       if (e.key === "Enter") { e.preventDefault(); commit(); }
       else if (e.key === "Escape") { done = true; el.remove(); }
     });
-    input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(); });
+    input.addEventListener("blur", () => commit());
   }
 
   function wireAgendaHabitChecks() {
@@ -2763,24 +2590,14 @@
       wrap.innerHTML = `<input type="text" class="inline-add-input" placeholder="언젠가 할 일" />`;
       row.replaceWith(wrap);
       const input = wrap.querySelector("input");
-      // 언젠가는 원래 날짜 개념이 없어서 기본값은 오늘 — 아이콘으로 날짜·반복을 지정하면 "언젠가"가 아니라
-      // 바로 날짜 있는 할일(tok_todos)로 만들어짐(드래그로 다가오는 계획에 옮길 때와 같은 방식).
-      const qa = attachQuickAddIcons(wrap, todayStr(), undefined, undefined, () => commit(false));
       input.focus();
       let done = false;
       const commit = async (reopen) => {
         if (done) return;
         const name = input.value.trim();
-        if (!name) { done = true; qa.close(); renderSomedaySummary(); return; }
+        if (!name) { done = true; renderSomedaySummary(); return; }
         done = true;
-        qa.close();
-        const patch = qa.getPatch();
-        const { error } = patch.start_date || patch.repeat_unit
-          ? await sb.from("tok_todos").insert({
-              title: name, start_date: patch.start_date || todayStr(),
-              repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
-            })
-          : await sb.from("tok_someday").insert({ title: name });
+        const { error } = await sb.from("tok_someday").insert({ title: name });
         if (error) { alert("저장 실패: " + error.message); done = false; return; }
         await loadAll();
         if (reopen) attachSomedayAddClick(true);
@@ -2789,7 +2606,7 @@
         if (e.key === "Enter") { e.preventDefault(); commit(true); }
         else if (e.key === "Escape") { done = true; renderSomedaySummary(); }
       });
-      input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(false); });
+      input.addEventListener("blur", () => commit(false));
     };
     row.onclick = openInput;
     if (autoOpen) openInput();
@@ -3192,29 +3009,14 @@
         titleEl.replaceWith(wrap);
         const input = wrap.querySelector("input");
         input.value = current;
-        // 언젠가는 날짜 개념이 없어서 아이콘으로 날짜·반복을 지정하면 할일로 전환됨(추가할 때와 동일한 규칙).
-        const qa = attachQuickAddIcons(wrap, todayStr(), undefined, undefined, () => commit());
         input.focus(); input.select();
         let done = false;
         const commit = async () => {
           if (done) return;
           const title = input.value.trim();
-          const patch = qa.getPatch();
           const titleChanged = title && title !== current;
-          if (!titleChanged && !Object.keys(patch).length) { qa.close(); renderSomeday(); return; }
+          if (!titleChanged) { renderSomeday(); return; }
           done = true;
-          qa.close();
-          if (patch.start_date || patch.repeat_unit) {
-            const { error: insErr } = await sb.from("tok_todos").insert({
-              title: titleChanged ? title : current, start_date: patch.start_date || todayStr(),
-              repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
-            });
-            if (insErr) { alert("수정 실패: " + insErr.message); done = false; return; }
-            const { error: delErr } = await sb.from("tok_someday").delete().eq("id", id);
-            if (delErr) { alert("수정 실패: " + delErr.message); done = false; return; }
-            await loadAll();
-            return;
-          }
           const { error } = await sb.from("tok_someday").update({ title }).eq("id", id);
           if (error) { alert("수정 실패: " + error.message); done = false; return; }
           const item = somedayItems.find(s => s.id === id);
@@ -3223,9 +3025,9 @@
         };
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { done = true; qa.close(); renderSomeday(); }
+          else if (e.key === "Escape") { done = true; renderSomeday(); }
         });
-        input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(); });
+        input.addEventListener("blur", () => commit());
       };
     });
     // 오른쪽 클릭 → 태그 변경/삭제 메뉴
@@ -3236,23 +3038,9 @@
       };
     });
   }
-  // 할일 탭 자체의 "언젠가" 추가창에도 홈 카드와 동일하게 날짜/반복 아이콘을 붙임 — 처음 한 번만 붙이면 됨(정적 HTML이라 다시 렌더되지 않음).
-  const somedayTabQa = attachQuickAddIcons($("somedayInput").parentElement, todayStr(), $("somedayAddBtn"));
   $("somedayAddBtn").onclick = async () => {
     const title = $("somedayInput").value.trim();
     if (!title) return;
-    const patch = somedayTabQa.getPatch();
-    somedayTabQa.close();
-    if (patch.start_date || patch.repeat_unit) {
-      const { error } = await sb.from("tok_todos").insert({
-        title, start_date: patch.start_date || todayStr(),
-        repeat_unit: patch.repeat_unit || null, repeat_interval: patch.repeat_unit ? patch.repeat_interval : null,
-      });
-      if (error) { alert("추가 실패: " + error.message); return; }
-      $("somedayInput").value = "";
-      await loadAll();
-      return;
-    }
     const { data, error } = await sb.from("tok_someday").insert({ title }).select().single();
     if (error) { alert("추가 실패: " + error.message); return; }
     somedayItems.push(data);
@@ -3315,33 +3103,23 @@
         titleEl.replaceWith(wrap);
         const input = wrap.querySelector("input");
         input.value = current;
-        const item = events.find(e => e.id === id);
-        const qa = attachQuickAddIcons(wrap, item?.event_date || todayStr(), null,
-          item ? { date: item.event_date, repeat_unit: item.repeat_unit, repeat_interval: item.repeat_interval } : {},
-          () => commit());
         input.focus(); input.select();
         let done = false;
         const commit = async () => {
           if (done) return;
           const title = input.value.trim();
-          const patch = qa.getPatch();
           const titleChanged = title && title !== current;
-          if (!titleChanged && !Object.keys(patch).length) { qa.close(); renderSchedule(); return; }
+          if (!titleChanged) { renderSchedule(); return; }
           done = true;
-          qa.close();
-          const updatePatch = {};
-          if (titleChanged) updatePatch.title = title;
-          if (patch.start_date) updatePatch.event_date = patch.start_date;
-          if ("repeat_unit" in patch) { updatePatch.repeat_unit = patch.repeat_unit; updatePatch.repeat_interval = patch.repeat_interval; }
-          const { error } = await sb.from("tok_events").update(updatePatch).eq("id", id);
+          const { error } = await sb.from("tok_events").update({ title }).eq("id", id);
           if (error) { alert("수정 실패: " + error.message); done = false; return; }
           await loadAll();
         };
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { done = true; qa.close(); renderSchedule(); }
+          else if (e.key === "Escape") { done = true; renderSchedule(); }
         });
-        input.addEventListener("blur", () => { if (!qa.isPopoverOpen()) commit(); });
+        input.addEventListener("blur", () => commit());
       };
     });
     // 오른쪽 클릭 → 삭제 메뉴
